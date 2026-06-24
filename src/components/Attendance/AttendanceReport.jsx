@@ -1,14 +1,16 @@
-import { useRef } from 'react';
+import { useRef, useState, useMemo, useEffect } from 'react';
+import axios from 'axios';
+import { useAuth } from '../../context/AuthContext';
 import {
   Box, Flex, Text, Input, Select, Button, Table, Thead, Tbody,
-  Tr, Th, Td, Badge, Grid, InputGroup, InputRightElement,
-  TableContainer, FormControl, FormLabel,
+  Tr, Th, Td, Badge, InputGroup, InputRightElement,
+  TableContainer, FormControl, FormLabel,Menu, MenuButton, MenuList, MenuItem,
 } from '@chakra-ui/react';
 import {
-  FileSpreadsheet, Download, RefreshCw, FileText, Calendar, Clock, Printer,
+  FileSpreadsheet, Download, RefreshCw, FileText, Calendar, Clock, Printer, Search,ZoomIn,
 } from 'lucide-react';
 
-// ── Design Tokens ─────────────────────────────────────────────────────────────
+// ── Design Tokens ──────────────────────────────────────────────────────────────
 const C = {
   navy:    '#001A4D',
   blue700: '#0052CC',
@@ -27,7 +29,7 @@ const card = {
   bg: C.white,
   border: `1px solid ${C.blue200}`,
   borderRadius: '12px',
-  boxShadow: '0 1px 4px rgba(179, 201, 222, 0.07)',
+  boxShadow: '0 1px 4px rgba(179,201,222,0.07)',
 };
 
 const inputSx = {
@@ -65,31 +67,24 @@ const primaryBtn = {
   transition: 'all 0.15s',
 };
 
-const outlineBtn = {
+const compactBtn = {
   bg: C.white,
   color: C.blue700,
-  border: `1px solid ${C.blue700}`,
+  border: `1px solid ${C.blue200}`,
   fontWeight: 600,
-  fontSize: 'sm',
-  borderRadius: '8px',
-  h: '38px',
-  px: 5,
-  _hover: { bg: C.blue50 },
-  transition: 'all 0.15s',
-};
-
-const compactBtn = {
-  ...outlineBtn,
   fontSize: 'xs',
   borderRadius: '6px',
   h: '34px',
   px: 3,
-  minW: 'auto',
-  _hover: { bg: C.blue50, transform: 'none', boxShadow: 'none' },
+  _hover: { bg: C.blue50 },
+  transition: 'all 0.15s',
 };
 
+
+// ── Sub-components ─────────────────────────────────────────────────────────────
 const TypeBadge = ({ type }) => {
-  const isIn = String(type).toLowerCase().includes('in') || String(type) === '0';
+  const val = String(type).toUpperCase();
+  const isIn = val === 'I' || val === 'IN';
   return (
     <Badge
       bg={isIn ? C.green.bg : C.amber.bg}
@@ -103,113 +98,93 @@ const TypeBadge = ({ type }) => {
 
 const FF = ({ label, children }) => (
   <FormControl>
-    <FormLabel fontSize="11px" fontWeight={700} color={C.blue500} textTransform="uppercase" letterSpacing="0.08em" mb={1}>{label}</FormLabel>
+    <FormLabel fontSize="11px" fontWeight={700} color={C.blue500}
+      textTransform="uppercase" letterSpacing="0.08em" mb={1}>
+      {label}
+    </FormLabel>
     {children}
   </FormControl>
 );
 
 const TH = ({ children }) => (
-  <Th bg={C.blue50} color={C.blue400} fontSize="10px" textTransform="uppercase" letterSpacing="0.08em" fontWeight={700} py={3} borderBottom={`1px solid ${C.blue200}`} whiteSpace="nowrap">{children}</Th>
+  <Th bg={C.blue50} color={C.blue400} fontSize="10px" textTransform="uppercase"
+    letterSpacing="0.08em" fontWeight={700} py={3}
+    borderBottom={`1px solid ${C.blue200}`} whiteSpace="nowrap">
+    {children}
+  </Th>
 );
 const TD = ({ children, ...p }) => (
-  <Td py={3} px={4} fontSize="13px" color={C.navy} borderBottom={`1px solid ${C.blue50}`} {...p}>{children}</Td>
+  <Td py={3} px={4} fontSize="13px" color={C.navy}
+    borderBottom={`1px solid ${C.blue50}`} {...p}>
+    {children}
+  </Td>
 );
 
-const SectionLabel = ({ icon: Icon, title }) => (
-  <Flex align="center" gap={2} mb={5}>
-    <Box bg={C.blue100} p={2} borderRadius="8px" color={C.blue700}><Icon size={16} /></Box>
-    <Text fontSize="md" fontWeight={700} color={C.navy} letterSpacing="-0.01em">{title}</Text>
-  </Flex>
-);
-
-const EmptyState = ({ icon: Icon, title, subtitle }) => (
+const EmptyState = () => (
   <Flex direction="column" align="center" justify="center" py={16} gap={3}>
-    <Box bg={C.blue100} p={4} borderRadius="full" color={C.blue400}><Icon size={32} /></Box>
-    <Text color={C.navy} fontSize="sm" fontWeight={600}>{title}</Text>
-    <Text color={C.blue400} fontSize="xs" textAlign="center">{subtitle}</Text>
+    <Box bg={C.blue100} p={4} borderRadius="full" color={C.blue400}>
+      <FileSpreadsheet size={32} />
+    </Box>
+    <Text color={C.navy} fontSize="sm" fontWeight={600}>No report data</Text>
+    <Text color={C.blue400} fontSize="xs" textAlign="center">
+      Configure the filters above and click Show Report.
+    </Text>
   </Flex>
 );
 
-const formatCheckType = (type) => {
-  const value = String(type).toLowerCase();
-  if (value === '0' || value.includes('in')) return '1';
-  if (value === '1' || value.includes('out')) return '0';
-  return String(type);
-};
+// ── Helpers ────────────────────────────────────────────────────────────────────
+const getDeptName = (departments, deptId) =>
+  (deptId && departments.find(d => String(d.deptId) === String(deptId))?.deptName) || 'All';
 
 const escapePdfString = (text) => String(text)
-  .replace(/\\/g, '\\\\')
-  .replace(/\(/g, '\\(')
-  .replace(/\)/g, '\\)')
-  .replace(/\r/g, '\\r')
-  .replace(/\n/g, '\\n');
+  .replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
+  .replace(/\r/g, '\\r').replace(/\n/g, '\\n');
 
 const createPdfBlob = ({ title, detailRows, headers, rows }) => {
-  const pageWidth = 612;
-  const pageHeight = 792;
-  const margin = 40;
-  const titleFontSize = 18;
-  const detailFontSize = 10;
-  const headerFontSize = 10;
-  const rowFontSize = 10;
-  const rowHeight = 24;
-  const headerHeight = 28;
-  const detailSpacing = 18;
+  const pageWidth = 612, pageHeight = 792, margin = 40;
+  const titleFontSize = 18, detailFontSize = 10, rowFontSize = 10;
+  const rowHeight = 24, headerHeight = 28, detailSpacing = 18;
   const tableWidth = pageWidth - margin * 2;
   const colWidths = [70, 190, 90, 90, 92];
   const colPositions = [margin];
-  for (let i = 0; i < colWidths.length; i += 1) {
-    colPositions.push(colPositions[i] + colWidths[i]);
-  }
+  for (let i = 0; i < colWidths.length; i++) colPositions.push(colPositions[i] + colWidths[i]);
 
   const titleY = pageHeight - margin;
   const detailStartY = titleY - titleFontSize - 14;
   const tableTop = detailStartY - detailRows.length * detailSpacing - 16;
   const tableBottom = tableTop - headerHeight - rowHeight * rows.length;
-  const tableLines = [];
-  const textLines = [];
+  const tableLines = [], textLines = [];
 
   textLines.push(`/F1 ${titleFontSize} Tf`);
   textLines.push(`1 0 0 1 ${margin} ${titleY} Tm (${escapePdfString(title)}) Tj`);
-
   textLines.push(`/F1 ${detailFontSize} Tf`);
-  detailRows.forEach((row, index) => {
-    const y = detailStartY - index * detailSpacing;
-    textLines.push(`1 0 0 1 ${margin} ${y} Tm (${escapePdfString(`${row[0]}:`)}) Tj`);
+  detailRows.forEach((row, i) => {
+    const y = detailStartY - i * detailSpacing;
+    textLines.push(`1 0 0 1 ${margin} ${y} Tm (${escapePdfString(row[0] + ':')}) Tj`);
     textLines.push(`1 0 0 1 ${margin + 130} ${y} Tm (${escapePdfString(row[1])}) Tj`);
   });
-
-  textLines.push(`/F1 ${headerFontSize} Tf`);
-  const headerTextY = tableTop - headerHeight / 2 - 6;
-  headers.forEach((header, index) => {
-    textLines.push(`1 0 0 1 ${colPositions[index] + 6} ${headerTextY} Tm (${escapePdfString(header)}) Tj`);
-  });
-
+  textLines.push(`/F1 10 Tf`);
+  const hy = tableTop - headerHeight / 2 - 6;
+  headers.forEach((h, i) => textLines.push(`1 0 0 1 ${colPositions[i] + 6} ${hy} Tm (${escapePdfString(h)}) Tj`));
   textLines.push(`/F1 ${rowFontSize} Tf`);
-  rows.forEach((row, rowIndex) => {
-    const y = tableTop - headerHeight - rowHeight * rowIndex - 10;
-    row.forEach((cell, cellIndex) => {
-      textLines.push(`1 0 0 1 ${colPositions[cellIndex] + 6} ${y} Tm (${escapePdfString(cell)}) Tj`);
-    });
+  rows.forEach((row, ri) => {
+    const y = tableTop - headerHeight - rowHeight * ri - 10;
+    row.forEach((cell, ci) => textLines.push(`1 0 0 1 ${colPositions[ci] + 6} ${y} Tm (${escapePdfString(cell)}) Tj`));
   });
-
   textLines.push(`/F1 9 Tf`);
-  textLines.push(`1 0 0 1 ${margin} 30 Tm (${escapePdfString(`Generated on: ${new Date().toLocaleString()}`)}) Tj`);
+  textLines.push(`1 0 0 1 ${margin} 30 Tm (${escapePdfString('Generated on: ' + new Date().toLocaleString())}) Tj`);
 
   tableLines.push('0.4 w');
   tableLines.push(`${margin} ${titleY - 8} m ${margin + tableWidth} ${titleY - 8} l S`);
-  tableLines.push('0 G');
-  tableLines.push('0 g');
   tableLines.push('0.5 w');
   tableLines.push(`${margin} ${tableTop} m ${margin + tableWidth} ${tableTop} l S`);
   tableLines.push(`${margin} ${tableTop - headerHeight} m ${margin + tableWidth} ${tableTop - headerHeight} l S`);
-  for (let i = 1; i <= rows.length; i += 1) {
+  for (let i = 1; i <= rows.length; i++) {
     const y = tableTop - headerHeight - rowHeight * i;
     tableLines.push(`${margin} ${y} m ${margin + tableWidth} ${y} l S`);
   }
-  for (let i = 0; i < colPositions.length; i += 1) {
-    const x = colPositions[i];
-    tableLines.push(`${x} ${tableTop} m ${x} ${tableBottom} l S`);
+  for (let i = 0; i < colPositions.length; i++) {
+    tableLines.push(`${colPositions[i]} ${tableTop} m ${colPositions[i]} ${tableBottom} l S`);
   }
   tableLines.push(`${margin + tableWidth} ${tableTop} m ${margin + tableWidth} ${tableBottom} l S`);
 
@@ -221,212 +196,474 @@ const createPdfBlob = ({ title, detailRows, headers, rows }) => {
     `4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n`,
     `5 0 obj\n<< /Length ${new TextEncoder().encode(contentStream).length} >>\nstream\n${contentStream}\nendstream\nendobj\n`,
   ];
-  const encoder = new TextEncoder();
-  const header = '%PDF-1.3\n';
+  const enc = new TextEncoder();
+  const hdr = '%PDF-1.3\n';
   const offsets = [];
-  let currentOffset = encoder.encode(header).length;
-  for (const obj of objects) {
-    offsets.push(currentOffset);
-    currentOffset += encoder.encode(obj).length;
-  }
-  const xrefEntries = offsets.map(offset => `${String(offset).padStart(10, '0')} 00000 n \n`).join('');
+  let off = enc.encode(hdr).length;
+  for (const obj of objects) { offsets.push(off); off += enc.encode(obj).length; }
+  const xrefEntries = offsets.map(o => `${String(o).padStart(10, '0')} 00000 n \n`).join('');
   const xref = `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${xrefEntries}`;
-  const trailer = `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${currentOffset}\n%%EOF`;
-  const pdf = header + objects.join('') + xref + '\n' + trailer;
-  return new Blob([pdf], { type: 'application/pdf' });
+  const trailer = `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${off}\n%%EOF`;
+  return new Blob([hdr + objects.join('') + xref + '\n' + trailer], { type: 'application/pdf' });
 };
 
+// ── Main Component ─────────────────────────────────────────────────────────────
 export default function AttendanceReport({
   reportFilters,
   setReportFilters,
   reportData,
+  reportMetaType = 'daily',
   reportLoading,
   departments,
   onGenerateReport,
   toast,
 }) {
-  const startDateInputRef = useRef(null);
-  const endDateInputRef = useRef(null);
+  const { apiUrl } = useAuth();
+  const startDateRef = useRef(null);
+  const endDateRef   = useRef(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sections, setSections] = useState([]);
+  const [zoomLevel, setZoomLevel] = useState(1);
 
-  const handleDownloadCSV = () => {
-    if (!reportData.length) { toast({ title: 'No data to download', status: 'warning', duration: 3000, isClosable: true }); return; }
-    const deptName = (reportFilters.deptId && (departments.find(d => String(d.DEPTID) === String(reportFilters.deptId))?.DEPTNAME)) || 'All';
-    const headingRows = [
-      `Department: ${deptName}`,
-      `Section: ${deptName}`,
-      `From: ${reportFilters.startDate} ${reportFilters.startTime}`,
-      `To: ${reportFilters.endDate} ${reportFilters.endTime}`,
-      '',
-    ];
-    const headers = ['EPF No', 'Name', 'Date', 'Time', 'Type'];
-    const rows = reportData.map(r => {
-      const d = new Date(r.CHECKTIME);
-      return [r.USERID, r.employeeName, d.toLocaleDateString(), d.toLocaleTimeString(), formatCheckType(r.CHECKTYPE)];
+  // Fetch sub-departments (sections) for the selected department
+  useEffect(() => {
+    const deptId = reportFilters.deptId;
+    if (!deptId) { setSections([]); return; }
+    axios.get(`${apiUrl}/user-settings/sections?deptId=${deptId}`)
+      .then(res => setSections(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setSections([]));
+  }, [reportFilters.deptId, apiUrl]);
+
+  const set = (field) => (e) => {
+    const value = e.target.value;
+    if (field === 'deptId') {
+      setReportFilters(p => ({ ...p, deptId: value, section: '' }));
+    } else {
+      setReportFilters(p => ({ ...p, [field]: value }));
+    }
+  };
+
+  // Client-side search — filters by EPF or name (all report types)
+  const filteredData = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return reportData;
+    return reportData.filter(r => {
+      const epf  = String(r.badgeNumber ?? r.userId ?? '').toLowerCase();
+      const name = String(r.name ?? '').toLowerCase();
+      const extra = r.checkTime
+        ? new Date(r.checkTime).toLocaleDateString().toLowerCase()
+        : String(r.month ?? '').toLowerCase();
+      return epf.includes(q) || name.includes(q) || extra.includes(q);
     });
-    const csv = [...headingRows, headers, ...rows].map(row => Array.isArray(row) ? row.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',') : `"${String(row)}"`).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  }, [reportData, searchQuery]);
+
+  // Row builder — adapts per report type
+  const buildRows = (data) => {
+    if (reportMetaType === 'absence') {
+      return data.map((r, i) => [String(i + 1), String(r.badgeNumber ?? ''), String(r.name ?? '')]);
+    }
+    if (reportMetaType === 'monthly') {
+      return data.map((r, i) => [
+        String(i + 1),
+        String(r.badgeNumber ?? ''),
+        String(r.name ?? ''),
+        String(r.month ?? ''),
+        String(r.daysPresent ?? ''),
+      ]);
+    }
+    return data.map(r => {
+      const d = new Date(r.checkTime);
+      return [
+        String(r.badgeNumber ?? r.userId ?? ''),
+        String(r.name ?? ''),
+        d.toLocaleDateString(),
+        d.toLocaleTimeString(),
+        r.checkTypeDisplay ?? (r.checkType === 'I' ? 'IN' : 'OUT'),
+      ];
+    });
+  };
+
+  const download = (blob, filename) => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.setAttribute('download', `attendance_report_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    a.href = url; a.setAttribute('download', filename);
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  };
+
+  const exportHeaders = () => {
+    if (reportMetaType === 'absence') return ['#', 'EPF No', 'Name'];
+    if (reportMetaType === 'monthly') return ['#', 'EPF No', 'Name', 'Month', 'Days Present'];
+    return ['EPF No', 'Name', 'Date', 'Time', 'Type'];
+  };
+
+  const handleDownloadCSV = () => {
+    if (!filteredData.length) { toast({ title: 'No data to download', status: 'warning', duration: 3000, isClosable: true }); return; }
+    const deptName = getDeptName(departments, reportFilters.deptId);
+    const heading = [
+      `Department: ${deptName}`,
+      `From: ${reportFilters.fromDate} ${reportFilters.fromTime}`,
+      `To: ${reportFilters.toDate} ${reportFilters.toTime}`,
+      '',
+    ];
+    const headers = exportHeaders();
+    const rows = buildRows(filteredData);
+    const csv = [...heading, headers, ...rows]
+      .map(row => Array.isArray(row)
+        ? row.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')
+        : `"${String(row)}"`)
+      .join('\n');
+    download(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), `attendance_${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   const handleDownloadWord = () => {
-    if (!reportData.length) { toast({ title: 'No data to download', status: 'warning', duration: 3000, isClosable: true }); return; }
-    const deptName = (reportFilters.deptId && (departments.find(d => String(d.DEPTID) === String(reportFilters.deptId))?.DEPTNAME)) || 'All';
-    const headers = ['EPF No', 'Name', 'Date', 'Time', 'Type'];
-    const rows = reportData.map(r => {
-      const d = new Date(r.CHECKTIME);
-      return [r.USERID, r.employeeName, d.toLocaleDateString(), d.toLocaleTimeString(), formatCheckType(r.CHECKTYPE)];
-    });
-    let html = '<h2>Attendance Report</h2><p><strong>Department:</strong> ' + deptName + '</p><p><strong>Section:</strong> '+ deptName +'</p><p><strong>From:</strong> ' + reportFilters.startDate + ' ' + reportFilters.startTime + '</p><p><strong>To:</strong> ' + reportFilters.endDate + ' ' + reportFilters.endTime + '</p><table border="1" cellpadding="8"><tr>' + headers.map(h => `<th style="background-color:#0052CC;color:white;">${h}</th>`).join('') + '</tr>';
-    rows.forEach(row => { html += '<tr>' + row.map(v => `<td>${v}</td>`).join('') + '</tr>'; });
-    html += '</table>';
-    const blob = new Blob([html], { type: 'application/msword;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.setAttribute('download', `attendance_report_${new Date().toISOString().slice(0, 10)}.doc`);
-    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    if (!filteredData.length) { toast({ title: 'No data to download', status: 'warning', duration: 3000, isClosable: true }); return; }
+    const deptName = getDeptName(departments, reportFilters.deptId);
+    const headers = exportHeaders();
+    const rows = buildRows(filteredData);
+    let html = `<h2>Attendance Report</h2>
+      <p><strong>Department:</strong> ${deptName}</p>
+      <p><strong>From:</strong> ${reportFilters.fromDate} ${reportFilters.fromTime}</p>
+      <p><strong>To:</strong> ${reportFilters.toDate} ${reportFilters.toTime}</p>
+      <table border="1" cellpadding="8">
+        <tr>${headers.map(h => `<th style="background:#0052CC;color:#fff">${h}</th>`).join('')}</tr>
+        ${rows.map(row => `<tr>${row.map(v => `<td>${v}</td>`).join('')}</tr>`).join('')}
+      </table>`;
+    download(new Blob([html], { type: 'application/msword;charset=utf-8;' }), `attendance_${new Date().toISOString().slice(0, 10)}.doc`);
   };
 
   const handleDownloadPDF = () => {
-    if (!reportData.length) { toast({ title: 'No data to download', status: 'warning', duration: 3000, isClosable: true }); return; }
-    const deptName = (reportFilters.deptId && (departments.find(d => String(d.DEPTID) === String(reportFilters.deptId))?.DEPTNAME)) || 'All';
-    const headers = ['EPF No', 'Name', 'Date', 'Time', 'Type'];
-    const rows = reportData.map(r => {
-      const d = new Date(r.CHECKTIME);
-      return [r.USERID, r.employeeName, d.toLocaleDateString(), d.toLocaleTimeString(), formatCheckType(r.CHECKTYPE)];
-    });
+    if (!filteredData.length) { toast({ title: 'No data to download', status: 'warning', duration: 3000, isClosable: true }); return; }
+    const deptName = getDeptName(departments, reportFilters.deptId);
+    const headers = exportHeaders();
+    const rows = buildRows(filteredData);
     const detailRows = [
       ['Department', deptName],
-      ['Section', '-'],
-      ['From', `${reportFilters.startDate} ${reportFilters.startTime}`],
-      ['To', `${reportFilters.endDate} ${reportFilters.endTime}`],
+      ['From', `${reportFilters.fromDate} ${reportFilters.fromTime}`],
+      ['To', `${reportFilters.toDate} ${reportFilters.toTime}`],
       ['Total Records', String(rows.length)],
     ];
-    const blob = createPdfBlob({ title: 'Attendance Report', detailRows, headers, rows });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.setAttribute('download', `attendance_report_${new Date().toISOString().slice(0, 10)}.pdf`);
-    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    download(createPdfBlob({ title: 'Attendance Report', detailRows, headers, rows }), `attendance_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
   return (
     <Box>
+      {/* ── Filter Card ────────────────────────────────────────────────────── */}
       <Box {...card} p={6} mb={5}>
-        <SectionLabel icon={FileSpreadsheet} title="Attendance Report" />
-        <Grid templateColumns={{ base: '1fr', sm: 'repeat(2,1fr)', md: 'repeat(4,1fr)', lg: 'repeat(5,1fr)' }} gap={4} mb={5}>
+        <Flex align="center" gap={2} mb={5}>
+          <Box bg={C.blue100} p={2} borderRadius="8px" color={C.blue700}>
+            <FileSpreadsheet size={16} />
+          </Box>
+          <Text fontSize="md" fontWeight={700} color={C.navy} letterSpacing="-0.01em">
+            Attendance Report
+          </Text>
+        </Flex>
+
+        {/* Row 1: REPORT | DEPARTMENT | SECTION | TYPE | EPF */}
+        <Flex gap={4} mb={5} flexWrap={{ base: 'wrap', lg: 'nowrap' }}>
+
+          {/* REPORT — report type, NOT departments */}
           <FF label="Report">
-            <Select placeholder=" " {...inputSx} value={reportFilters.deptId} onChange={e => setReportFilters(p => ({ ...p, deptId: e.target.value }))}>
-              {departments.map(d => <option key={d.DEPTID} value={d.DEPTID}>{d.DEPTNAME}</option>)}
+            <Select {...inputSx}  value={reportFilters.reportType} onChange={set('reportType')}>
+              <option value="Daily Attendance">Daily Attendance</option>
+              <option value="Daily Attendance">Daily Attendance II</option>
+              <option value="Absence Report">Absence Report</option>
+              <option value="Monthly Attendance">Monthly Attendance</option>
+              <option value="Monthly Attendance">Monthly Attendance II</option>
+              <option value="Monthly Attendance">Daily Attendance II</option>
+              <option value="Serial/EPF">Serial / EPF</option>
             </Select>
           </FF>
+
+          {/* DEPARTMENT — all departments, same for admin and user */}
           <FF label="Department">
-            <Select placeholder="All Departments" {...inputSx} value={reportFilters.deptId} onChange={e => setReportFilters(p => ({ ...p, deptId: e.target.value }))}>
-              {departments.map(d => <option key={d.DEPTID} value={d.DEPTID}>{d.DEPTNAME}</option>)}
+            <Select {...inputSx}  value={reportFilters.deptId} onChange={set('deptId')}>
+              {departments.map(d => (
+                <option key={d.deptId} value={d.deptId}>{d.deptName}</option>
+              ))}
             </Select>
           </FF>
+
+          {/* SECTION — sub-departments of selected department */}
           <FF label="Section">
-            <Select placeholder=" " {...inputSx} value={reportFilters.deptId} onChange={e => setReportFilters(p => ({ ...p, deptId: e.target.value }))}>
-              {departments.map(d => <option key={d.DEPTID} value={d.DEPTID}>{d.DEPTNAME}</option>)}
+            <Select
+              {...inputSx}
+              placeholder={reportFilters.deptId ? 'All Sections' : 'Select Department first'}
+              value={reportFilters.section}
+              onChange={set('section')}
+              isDisabled={!reportFilters.deptId}
+            >
+              {sections.map(s => (
+                <option key={s.sectionId} value={s.sectionId}>{s.sectionName}</option>
+              ))}
             </Select>
           </FF>
-          <FF label="Type">
-            <Select placeholder="IN / OUT" {...inputSx} value={reportFilters.type} onChange={e => setReportFilters(p => ({ ...p, type: e.target.value }))}>
+
+          {/* TYPE — hidden for Monthly Attendance */}
+          {reportFilters.reportType !== 'Monthly Attendance' && <FF label="Type">
+            <Select {...inputSx} placeholder="IN / OUT" value={reportFilters.checkType} onChange={set('checkType')}>
               <option value="IN">IN</option>
               <option value="OUT">OUT</option>
             </Select>
-          </FF>
+          </FF>}
+
+          {/* EPF number */}
           <FF label="EPF">
-            <Input placeholder="EPF number" {...inputSx} value={reportFilters.epf} onChange={e => setReportFilters(p => ({ ...p, epf: e.target.value }))} />
+            <Input
+              {...inputSx} placeholder="EPF number"
+              value={reportFilters.badgeNumber}
+              onChange={set('badgeNumber')}
+            />
           </FF>
+        </Flex>
+
+        {/* Row 2: FROM | TO | Show Report */}
+        <Flex gap={4} align="flex-end" flexWrap={{ base: 'wrap', md: 'nowrap' }}>
           <FF label="From">
-            <Flex gap={2} flexWrap={{ base: 'wrap', md: 'nowrap' }}>
+            <Flex gap={2}>
               <InputGroup flex="1">
-                <Input ref={startDateInputRef} type="date" {...inputSx} value={reportFilters.startDate} onChange={e => setReportFilters(p => ({ ...p, startDate: e.target.value }))} sx={{ '::-webkit-calendar-picker-indicator': { opacity: 0.5 } }} />
-                <InputRightElement pointerEvents="auto" color={C.blue500} cursor="pointer" onClick={() => startDateInputRef.current?.showPicker ? startDateInputRef.current.showPicker() : startDateInputRef.current?.focus()}>
-                  <Calendar size={16} />
+                <Input
+                  ref={startDateRef} type="date" {...inputSx}
+                  value={reportFilters.fromDate} onChange={set('fromDate')}
+                  sx={{ '::-webkit-calendar-picker-indicator': { display: 'none' } }}
+                />
+                <InputRightElement
+                  pointerEvents="auto" color={C.blue500} cursor="pointer" h="full"
+                  _hover={{ color: C.blue700 }}
+                  onClick={() => startDateRef.current?.showPicker?.() ?? startDateRef.current?.focus()}
+                >
+                  <Calendar size={15} />
                 </InputRightElement>
               </InputGroup>
               <InputGroup flex="1">
-                <Input type="time" {...inputSx} value={reportFilters.startTime} onChange={e => setReportFilters(p => ({ ...p, startTime: e.target.value }))} />
-                <InputRightElement pointerEvents="none">
-                  <Clock size={16} color={C.navy} />
+                <Input
+                  type="time" {...inputSx}
+                  value={reportFilters.fromTime} onChange={set('fromTime')}
+                  sx={{
+                    '::-webkit-calendar-picker-indicator': {
+                      opacity: 0, cursor: 'pointer',
+                      position: 'absolute', right: 0, top: 0,
+                      width: '36px', height: '100%',
+                    },
+                  }}
+                />
+                <InputRightElement pointerEvents="none" color={C.blue500} h="full">
+                  <Clock size={15} />
                 </InputRightElement>
               </InputGroup>
             </Flex>
           </FF>
+
           <FF label="To">
-            <Flex gap={2} flexWrap={{ base: 'wrap', md: 'nowrap' }}>
+            <Flex gap={2}>
               <InputGroup flex="1">
-                <Input ref={endDateInputRef} type="date" {...inputSx} value={reportFilters.endDate} onChange={e => setReportFilters(p => ({ ...p, endDate: e.target.value }))} sx={{ '::-webkit-calendar-picker-indicator': { opacity: 0.5 } }} />
-                <InputRightElement pointerEvents="auto" color={C.blue500} cursor="pointer" onClick={() => endDateInputRef.current?.showPicker ? endDateInputRef.current.showPicker() : endDateInputRef.current?.focus()}>
-                  <Calendar size={16} />
+                <Input
+                  ref={endDateRef} type="date" {...inputSx}
+                  value={reportFilters.toDate} onChange={set('toDate')}
+                  sx={{ '::-webkit-calendar-picker-indicator': { display: 'none' } }}
+                />
+                <InputRightElement
+                  pointerEvents="auto" color={C.blue500} cursor="pointer" h="full"
+                  _hover={{ color: C.blue700 }}
+                  onClick={() => endDateRef.current?.showPicker?.() ?? endDateRef.current?.focus()}
+                >
+                  <Calendar size={15} />
                 </InputRightElement>
               </InputGroup>
               <InputGroup flex="1">
-                <Input type="time" {...inputSx} value={reportFilters.endTime} onChange={e => setReportFilters(p => ({ ...p, endTime: e.target.value }))} />
-                <InputRightElement pointerEvents="none">
-                  <Clock size={16} color={C.navy} />
+                <Input
+                  type="time" {...inputSx}
+                  value={reportFilters.toTime} onChange={set('toTime')}
+                  sx={{
+                    '::-webkit-calendar-picker-indicator': {
+                      opacity: 0, cursor: 'pointer',
+                      position: 'absolute', right: 0, top: 0,
+                      width: '36px', height: '100%',
+                    },
+                  }}
+                />
+                <InputRightElement pointerEvents="none" color={C.blue500} h="full">
+                  <Clock size={15} />
                 </InputRightElement>
               </InputGroup>
             </Flex>
           </FF>
-        </Grid>
-        <Flex gap={3} justify="flex-end" flexWrap="wrap">
-          <Button {...primaryBtn} leftIcon={<RefreshCw size={14} />} onClick={onGenerateReport} isLoading={reportLoading} loadingText="Generating…">Show Report</Button>
+
+          <Box>
+            
+           
+            <Button
+              {...primaryBtn}
+              leftIcon={<RefreshCw size={14} />}
+              onClick={onGenerateReport}
+              isLoading={reportLoading}
+              loadingText="Generating…"
+            >
+              Show Report
+            </Button>
+          </Box>
         </Flex>
       </Box>
 
-      <Box {...card} overflow="hidden">
-        <Text fontSize="sm" fontWeight={600} mb={3} color={C.navy}>Export Options</Text>
-        <Flex gap={1} flexWrap="wrap" align="center">
-          <Button {...compactBtn} leftIcon={<Download size={12} />} onClick={handleDownloadCSV}>Export CSV</Button>
+      {/* ── Export + Results Card ─────────────────────────────────────────────── */}
+      <Box {...card} p={6} overflow="hidden">
+         <Flex
+          justify="space-between"
+          align={{ base: 'flex-start', md: 'center' }}
+          direction={{ base: 'column', md: 'row' }}
+          gap={3}
+          mb={3} >
+         
+          <Text fontSize="sm" fontWeight={600} color={C.navy}>Export Options</Text>
+            </Flex>
+        <Flex gap={2} flexWrap="wrap" align="center" mb={4}>
+          <Button {...compactBtn} leftIcon={<Download size={12} />} onClick={handleDownloadCSV}>Export Excel</Button>
           <Button {...compactBtn} leftIcon={<FileText size={12} />} onClick={handleDownloadWord}>Export Word</Button>
           <Button {...compactBtn} leftIcon={<FileText size={12} />} onClick={handleDownloadPDF}>Export PDF</Button>
           <Button {...compactBtn} leftIcon={<Printer size={12} />} onClick={() => window.print()}>Print</Button>
+          <Menu>
+              <MenuButton as={Button} {...compactBtn} leftIcon={<ZoomIn size={12}/>}>Zoom {Math.round(zoomLevel * 100)}%</MenuButton>
+              <MenuList>
+                  <MenuItem onClick={() => setZoomLevel(0.5)}>50%</MenuItem>
+                  <MenuItem onClick={() => setZoomLevel(0.75)}>75%</MenuItem>
+                  <MenuItem onClick={() => setZoomLevel(1)}>100%</MenuItem>
+                  <MenuItem onClick={() => setZoomLevel(1.25)}>125%</MenuItem>
+                  <MenuItem onClick={() => setZoomLevel(1.5)}>150%</MenuItem>
+              </MenuList>
+          </Menu>
+          {/* Search — filters table by EPF, name, or date */}
+          <InputGroup maxW="260px" ml={{ base: 0, md: 'auto' }}>
+            <Input
+              h="34px" fontSize="sm" borderRadius="6px"
+              border={`1px solid ${C.blue200}`} bg={C.white} color={C.navy}
+              placeholder="Search EPF no, name, date"
+              _placeholder={{ color: C.blue400 }}
+              _focus={{ borderColor: C.blue600, boxShadow: `0 0 0 3px ${C.blue100}` }}
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
+            <InputRightElement pointerEvents="none" color={C.blue400} h="34px">
+              <Search size={13} />
+            </InputRightElement>
+          </InputGroup>
         </Flex>
+
+        {/* Results */}
         {reportData.length === 0 ? (
-          <EmptyState icon={FileSpreadsheet} title="No report data" subtitle="Configure the filters above and click Show Report." />
+          <EmptyState />
         ) : (
-          <Box>
-            <Box bg={C.blue50} p={4} mb={4} borderRadius="md">
-              <Grid templateColumns={{ base: '1fr', md: 'repeat(2,1fr)' }} gap={4} fontSize="sm">
-                <Flex direction="column">
-                  <Text fontWeight={600} color={C.navy}>Department: <Text as="span" fontWeight={400}>{(reportFilters.deptId && (departments.find(d => String(d.DEPTID) === String(reportFilters.deptId))?.DEPTNAME)) || 'All'}</Text></Text>
-                </Flex>
-                <Flex direction="column">
+          <Box transform={`scale(${zoomLevel})`} transformOrigin="top left" width={`${100 / zoomLevel}%`}>
+            {/* Summary bar */}
+            <Box >
+             <Flex justify="center" mb={4}>
+              <img src="/src/assets/AASL.png" alt="Report Banner" width="20%" borderRadius="8px" mb={4}  />
+            </Flex> 
+              <Text textAlign="center"fontSize="lg" fontWeight={700} color={C.navy} mb={2}>
+                Airport and Aviation Services (Sri Lanka) Limited
+              </Text>
+              <Text textAlign="center" fontSize="lg" fontWeight={700} color={C.navy} mb={2}>
+                Bandaranaike International Airport
+              </Text>
+              <Text textAlign="center" fontSize="lg" fontWeight={700} color={C.navy} mb={3}>
+                Katunayake
+              </Text>
+                <Text textAlign="center" fontWeight={600} color={C.navy} mb={2}>
+                <Text as="span" fontWeight={400}>{getDeptName(departments, reportFilters.deptId)}</Text>
+              </Text>
+
+
+            <Flex bg={C.blue50} borderRadius="8px" p={4} mb={4} gap={6} flexWrap="wrap" fontSize="sm">
+              <Text fontWeight={600} color={C.navy}>
+                Division: <Text as="span" fontWeight={400}>{getDeptName(departments, reportFilters.deptId)}</Text>
+              </Text>
+              <Flex direction="column">
                   <Text fontWeight={600} color={C.navy}>Section: <Text as="span" fontWeight={400}>{(reportFilters.deptId && (departments.find(d => String(d.DEPTID) === String(reportFilters.deptId))?.DEPTNAME)) || 'All'}</Text></Text>
                 </Flex>
-                <Flex direction="column">
-                  <Text fontWeight={600} color={C.navy}>From: <Text as="span" fontWeight={400}>{reportFilters.startDate} {reportFilters.startTime}</Text></Text>
-                </Flex>
-                <Flex direction="column">
-                  <Text fontWeight={600} color={C.navy}>To: <Text as="span" fontWeight={400}>{reportFilters.endDate} {reportFilters.endTime}</Text></Text>
-                </Flex>
-              </Grid>
+              {reportFilters.fromDate && (
+                <Text fontWeight={600} color={C.navy}>
+                  From: <Text as="span" fontWeight={400}>{reportFilters.fromDate} {reportFilters.fromTime}</Text>
+                </Text>
+              )}
+              {reportFilters.toDate && (
+                <Text fontWeight={600} color={C.navy}>
+                  To: <Text as="span" fontWeight={400}>{reportFilters.toDate} {reportFilters.toTime}</Text>
+                </Text>
+              )}
+              <Text fontWeight={600} color={C.navy}>
+                Total: <Text as="span" fontWeight={400}>{filteredData.length} records</Text>
+              </Text>
+            </Flex>
             </Box>
-            <TableContainer>
-              <Table variant="unstyled" size="sm">
-                <Thead><Tr>{['EPF No', 'Name', 'Date', 'Time', 'Type'].map(h => <TH key={h}>{h}</TH>)}</Tr></Thead>
-                <Tbody>
-                  {reportData.map((row, i) => {
-                    const checkTime = new Date(row.CHECKTIME);
-                    const date = checkTime.toLocaleDateString();
-                    const time = checkTime.toLocaleTimeString();
-                    return (
+            {/* ── Absence Report table ── */}
+            {reportMetaType === 'absence' && (
+              <TableContainer>
+                <Table variant="unstyled" size="sm">
+                  <Thead>
+                    <Tr>{['#', 'EPF No', 'Name'].map(h => <TH key={h}>{h}</TH>)}</Tr>
+                  </Thead>
+                  <Tbody>
+                    {filteredData.map((row, i) => (
                       <Tr key={i} _hover={{ bg: C.blue50 }} transition="background 0.1s">
-                        <TD color={C.blue500} fontWeight={600}>{row.USERID}</TD>
-                        <TD fontWeight={600}>{row.employeeName}</TD>
-                        <TD>{date}</TD>
-                        <TD>{time}</TD>
-                        <TD><TypeBadge type={row.CHECKTYPE} /></TD>
+                        <TD color={C.blue400}>{i + 1}</TD>
+                        <TD color={C.blue500} fontWeight={600}>{row.badgeNumber}</TD>
+                        <TD fontWeight={600}>{row.name}</TD>
                       </Tr>
-                    );
-                  })}
-                </Tbody>
-              </Table>
-            </TableContainer>
+                    ))}
+                  </Tbody>
+                </Table>
+              </TableContainer>
+            )}
+
+            {/* ── Monthly Attendance table ── */}
+            {reportMetaType === 'monthly' && (
+              <TableContainer>
+                <Table variant="unstyled" size="sm">
+                  <Thead>
+                    <Tr>{['#', 'EPF No', 'Name', 'Month', 'Days Present'].map(h => <TH key={h}>{h}</TH>)}</Tr>
+                  </Thead>
+                  <Tbody>
+                    {filteredData.map((row, i) => (
+                      <Tr key={i} _hover={{ bg: C.blue50 }} transition="background 0.1s">
+                        <TD color={C.blue400}>{i + 1}</TD>
+                        <TD color={C.blue500} fontWeight={600}>{row.badgeNumber}</TD>
+                        <TD fontWeight={600}>{row.name}</TD>
+                        <TD>{row.month}</TD>
+                        <TD>
+                          <Badge bg={C.blue100} color={C.blue700} px={2.5} py={0.5} borderRadius="full" fontSize="11px" fontWeight={700}>
+                            {row.daysPresent} days
+                          </Badge>
+                        </TD>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
+              </TableContainer>
+            )}
+
+            {/* ── Daily / Serial-EPF table ── */}
+            {(reportMetaType === 'daily' || reportMetaType === 'serial') && (
+              <TableContainer>
+                <Table variant="unstyled" size="sm">
+                  <Thead>
+                    <Tr>{['EPF No', 'Name', 'Date', 'Time', 'Type'].map(h => <TH key={h}>{h}</TH>)}</Tr>
+                  </Thead>
+                  <Tbody>
+                    {filteredData.map((row, i) => {
+                      const t = new Date(row.checkTime);
+                      return (
+                        <Tr key={i} _hover={{ bg: C.blue50 }} transition="background 0.1s">
+                          <TD color={C.blue500} fontWeight={600}>{row.badgeNumber ?? row.userId}</TD>
+                          <TD fontWeight={600}>{row.name}</TD>
+                          <TD>{t.toLocaleDateString()}</TD>
+                          <TD>{t.toLocaleTimeString()}</TD>
+                          <TD><TypeBadge type={row.checkType} /></TD>
+                        </Tr>
+                      );
+                    })}
+                  </Tbody>
+                </Table>
+              </TableContainer>
+            )}
           </Box>
         )}
       </Box>

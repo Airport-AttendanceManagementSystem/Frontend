@@ -152,7 +152,7 @@ export function SidebarContent({
               <LayoutDashboard size={17} color="white" />
             </Box>
             <Text fontSize="16px" fontWeight={700} color={C.white} lineHeight={1.2} letterSpacing="-0.01em">
-              Admin Portal
+              User Portal
             </Text>
           </Flex>
         )}

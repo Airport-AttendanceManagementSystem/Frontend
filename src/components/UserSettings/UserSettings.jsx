@@ -4,7 +4,6 @@ import {
 } from '@chakra-ui/react';
 import { UserPlus, ShieldCheck } from 'lucide-react';
 
-// ── Design Tokens ─────────────────────────────────────────────────────────────
 const C = {
   navy:    '#001A4D',
   blue700: '#0052CC',
@@ -17,7 +16,6 @@ const C = {
   white:   '#FFFFFF',
   green:   { bg: '#E6F4D7', text: '#2E6B0A' },
   red:     { bg: '#FDE8E8', text: '#9E1B1B' },
-  purple:  { bg: '#EEECFD', text: '#4A42B5' },
 };
 
 const card = {
@@ -48,6 +46,7 @@ const inputSx = {
   },
 };
 
+
 const primaryBtn = {
   bg: C.navy,
   color: C.white,
@@ -76,11 +75,11 @@ const outlineBtn = {
 
 const StatusBadge = ({ status }) => (
   <Badge
-    bg={status === 'active' ? C.green.bg : C.red.bg}
-    color={status === 'active' ? C.green.text : C.red.text}
+    bg={status ? C.green.bg : C.red.bg}
+    color={status ? C.green.text : C.red.text}
     px={2.5} py={0.5} borderRadius="full" fontSize="11px" fontWeight={600} textTransform="capitalize"
   >
-    {status}
+    {status ? 'Active' : 'Inactive'}
   </Badge>
 );
 
@@ -105,6 +104,8 @@ export default function UserSettings({
   setNewUser,
   addingUser,
   onAddUser,
+  deletingUser,
+  onDeleteUser,
   activateUser,
   activateStatus,
   setActivateStatus,
@@ -125,21 +126,21 @@ export default function UserSettings({
               <Input type="password" placeholder="Enter password" {...inputSx} value={newUser.password} onChange={e => setNewUser(p => ({ ...p, password: e.target.value }))} />
             </FF>
             <FF label="Re-Enter Password">
-              <Input type="password" placeholder="Re-enter password" {...inputSx} value={newUser.password} onChange={e => setNewUser(p => ({ ...p, password: e.target.value }))} />
+              <Input type="password" placeholder="Re-enter password" {...inputSx} value={newUser.confirmPassword} onChange={e => setNewUser(p => ({ ...p, confirmPassword: e.target.value }))} />
             </FF>
             <FF label="User Type">
-              <Select {...inputSx} value={newUser.usertype} onChange={e => setNewUser(p => ({ ...p, usertype: e.target.value }))}>
-                <option value="employee">User</option>
+              <Select {...inputSx} value={newUser.userType} onChange={e => setNewUser(p => ({ ...p, userType: e.target.value }))}>
+                <option value="user">User</option>
                 <option value="admin">Admin</option>
               </Select>
             </FF>
             <FF label="Department">
-              <Select placeholder="Select department" {...inputSx} value={newUser.deptid} onChange={e => setNewUser(p => ({ ...p, deptid: e.target.value }))}>
-                {departments.map(d => <option key={d.DEPTID} value={d.DEPTID}>{d.DEPTNAME}</option>)}
+              <Select placeholder="Select department" {...inputSx} value={newUser.deptId} onChange={e => setNewUser(p => ({ ...p, deptId: e.target.value }))}>
+                {departments.map(d => <option key={d.deptId} value={d.deptId}>{d.deptName}</option>)}
               </Select>
             </FF>
             <Flex w="full" gap={3} pt={1}>
-              <Button flex={1} {...outlineBtn} onClick={onAddUser} isLoading={addingUser}>Delete</Button>
+              <Button flex={1} {...outlineBtn} onClick={onDeleteUser} isLoading={deletingUser} loadingText="Deleting…">Delete</Button>
               <Button flex={1} {...primaryBtn} leftIcon={<UserPlus size={14} />} onClick={onAddUser} isLoading={addingUser} loadingText="Creating…">Add User</Button>
             </Flex>
           </VStack>
@@ -159,7 +160,7 @@ export default function UserSettings({
               >
                 {users.map(u => (
                   <option key={u.username} value={u.username}>
-                    {u.NAME || u.username} {u.status ? `(${u.status})` : ''}
+                    {u.username} ({u.userStatus === 1 ? 'active' : 'inactive'})
                   </option>
                 ))}
               </Select>
@@ -171,7 +172,7 @@ export default function UserSettings({
                   <Avatar size="sm" name={activateUser} bg={C.blue700} color={C.white} fontSize="xs" />
                   <Box flex={1}>
                     <Text fontSize="13px" fontWeight={600} color={C.navy}>{activateUser}</Text>
-                    <StatusBadge status={activateStatus ? 'active' : 'deactive'} />
+                    <StatusBadge status={activateStatus} />
                   </Box>
                 </Flex>
               </Box>
@@ -182,7 +183,7 @@ export default function UserSettings({
                 <Flex align="center" gap={3} flex={1}>
                   <Box w="10px" h="10px" borderRadius="full" bg={activateStatus ? C.green.text : C.red.text} />
                   <Text fontSize="13px" fontWeight={600} color={C.navy}>
-                    {activateStatus ? 'Active' : 'Deactive'}
+                    {activateStatus ? 'Active' : 'Inactive'}
                   </Text>
                 </Flex>
                 <Checkbox
@@ -195,7 +196,7 @@ export default function UserSettings({
                 />
               </Flex>
               <Text fontSize="11px" color={C.blue700} mt={2}>
-                {activateStatus ? 'deactivate' : 'activate'} the selected user account.
+                Toggle to {activateStatus ? 'deactivate' : 'activate'} the selected user account.
               </Text>
             </FF>
 

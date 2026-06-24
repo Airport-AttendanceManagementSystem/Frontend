@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Box, Flex, Text, Heading, Badge,
+  Box, Flex, Text, Heading,
   Tooltip, IconButton, useDisclosure, useBreakpointValue, useToast,
 } from '@chakra-ui/react';
 import { ChevronLeft, ChevronRight, Menu } from 'lucide-react';
@@ -13,7 +13,6 @@ import UserSettings     from '../components/UserSettings/UserSettings';
 import SectionAccess    from '../components/UserSettings/SectionAccess';
 import ChangePassword   from '../components/ChangePassword/ChangePassword';
 
-// ── Design Tokens ─────────────────────────────────────────────────────────────
 const C = {
   navy:    '#001A4D',
   blue700: '#0052CC',
@@ -27,7 +26,6 @@ const C = {
   pageBg:  '#FFFFFF',
 };
 
-// ── TopHeader ─────────────────────────────────────────────────────────────────
 function TopHeader({ activeTab, onMenuOpen, isMobile, collapsed, setCollapsed }) {
   let current = navItems.find(n => n.key === activeTab);
   if (!current) {
@@ -72,23 +70,10 @@ function TopHeader({ activeTab, onMenuOpen, isMobile, collapsed, setCollapsed })
           <Text fontSize="11px" color={C.blue400} mt={0.5}>{current?.description}</Text>
         </Box>
       </Flex>
-
-      {/* <Badge
-        bg={C.blue100} color={C.blue700}
-        border={`1px solid ${C.blue200}`}
-        px={3} py={1} borderRadius="full"
-        fontSize="11px" fontWeight={600} textTransform="none"
-      >
-        {new Date().toLocaleString('en-US', {
-          weekday: 'short', month: 'short', day: 'numeric',
-          hour: 'numeric', minute: '2-digit',
-        })}
-      </Badge> */}
     </Flex>
   );
 }
 
-// ── AdminDashboard ─────────────────────────────────────────────────────────────
 export default function AdminDashboard() {
   const { user, apiUrl } = useAuth();
   const toast = useToast();
@@ -102,15 +87,21 @@ export default function AdminDashboard() {
   const [departments,  setDepartments]  = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
 
+  // Attendance report — filter keys match backend DTO
   const [reportFilters, setReportFilters] = useState({
-    startDate: '', startTime: '', endDate: '', endTime: '',
-    deptId: '', username: '', epf: '', type: '',
+    reportType: '', fromDate: '', fromTime: '', toDate: '', toTime: '',
+    deptId: '', section: '', badgeNumber: '', checkType: '',
   });
-  const [reportData,    setReportData]    = useState([]);
-  const [reportLoading, setReportLoading] = useState(false);
+  const [reportData,     setReportData]     = useState([]);
+  const [reportMetaType, setReportMetaType] = useState('daily');
+  const [reportLoading,  setReportLoading]  = useState(false);
 
-  const [newUser,    setNewUser]    = useState({ username: '', password: '', usertype: 'employee', deptid: '' });
-  const [addingUser, setAddingUser] = useState(false);
+  // New user form — field names match backend DTO
+  const [newUser,    setNewUser]    = useState({
+    username: '', password: '', confirmPassword: '', userType: 'user', deptId: '',
+  });
+  const [addingUser,   setAddingUser]   = useState(false);
+  const [deletingUser, setDeletingUser] = useState(false);
 
   const [activateUser,       setActivateUser]       = useState('');
   const [activateStatus,     setActivateStatus]     = useState(false);
@@ -121,13 +112,10 @@ export default function AdminDashboard() {
   const [loadingSections,  setLoadingSections]  = useState(false);
   const [savingSections,   setSavingSections]   = useState(false);
 
-  const [passwords,        setPasswords]        = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
-  const [changingPassword, setChangingPassword] = useState(false);
-
   const fetchUsers = useCallback(async () => {
     setLoadingUsers(true);
     try {
-      const res = await axios.get(`${apiUrl}/users`);
+      const res = await axios.get(`${apiUrl}/user-settings/user`);
       setUsers(res.data);
     } catch {
       toast({ title: 'Failed to load users', status: 'error', duration: 3000, isClosable: true });
@@ -136,7 +124,7 @@ export default function AdminDashboard() {
 
   const fetchDepartments = useCallback(async () => {
     try {
-      const res = await axios.get(`${apiUrl}/users/departments`);
+      const res = await axios.get(`${apiUrl}/user-settings/departments`);
       setDepartments(res.data);
     } catch {
       toast({ title: 'Failed to load departments', status: 'error', duration: 3000, isClosable: true });
@@ -150,9 +138,10 @@ export default function AdminDashboard() {
     try {
       const params = new URLSearchParams();
       Object.entries(reportFilters).forEach(([k, v]) => { if (v) params.append(k, v); });
-      const res = await axios.get(`${apiUrl}/attendance/report?${params.toString()}`);
-      setReportData(res.data);
-      if (!res.data.length)
+      const res = await axios.get(`${apiUrl}/attendance-report?${params.toString()}`);
+      setReportData(res.data.records || []);
+      setReportMetaType(res.data.reportType || 'daily');
+      if (!(res.data.records || []).length)
         toast({ title: 'No records found', status: 'info', duration: 3000, isClosable: true });
     } catch {
       toast({ title: 'Failed to generate report', status: 'error', duration: 3000, isClosable: true });
@@ -160,26 +149,52 @@ export default function AdminDashboard() {
   };
 
   const handleAddUser = async () => {
-    if (!newUser.username || !newUser.password || !newUser.deptid) {
+    if (!newUser.username || !newUser.password || !newUser.deptId) {
       toast({ title: 'Please fill all fields', status: 'warning', duration: 3000, isClosable: true });
+      return;
+    }
+    if (newUser.password !== newUser.confirmPassword) {
+      toast({ title: 'Passwords do not match', status: 'error', duration: 3000, isClosable: true });
       return;
     }
     setAddingUser(true);
     try {
-      await axios.post(`${apiUrl}/users`, newUser);
+      await axios.post(`${apiUrl}/user-settings/user`, {
+        username: newUser.username,
+        password: newUser.password,
+        confirmPassword: newUser.confirmPassword,
+        userType: newUser.userType,
+        deptId: Number(newUser.deptId),
+      });
       toast({ title: 'User created successfully', status: 'success', duration: 3000, isClosable: true });
-      setNewUser({ username: '', password: '', usertype: 'employee', deptid: '' });
+      setNewUser({ username: '', password: '', confirmPassword: '', userType: 'user', deptId: '' });
       fetchUsers();
     } catch (err) {
       toast({ title: 'Failed to create user', description: err?.response?.data?.message || '', status: 'error', duration: 3000, isClosable: true });
     } finally { setAddingUser(false); }
   };
 
+  const handleDeleteUser = async () => {
+    if (!newUser.username) {
+      toast({ title: 'Please enter a username to delete', status: 'warning', duration: 3000, isClosable: true });
+      return;
+    }
+    setDeletingUser(true);
+    try {
+      await axios.delete(`${apiUrl}/user-settings/user/${newUser.username}`);
+      toast({ title: 'User deleted successfully', status: 'success', duration: 3000, isClosable: true });
+      setNewUser({ username: '', password: '', confirmPassword: '', userType: 'user', deptId: '' });
+      fetchUsers();
+    } catch (err) {
+      toast({ title: 'Failed to delete user', description: err?.response?.data?.message || '', status: 'error', duration: 3000, isClosable: true });
+    } finally { setDeletingUser(false); }
+  };
+
   const handleActivationSelect = (username) => {
     setActivateUser(username);
     if (!username) { setActivateStatus(false); return; }
     const selected = users.find(u => u.username === username);
-    setActivateStatus(selected?.status === 'active');
+    setActivateStatus(selected?.userStatus === 1);
   };
 
   const handleUpdateActivation = async () => {
@@ -189,9 +204,9 @@ export default function AdminDashboard() {
     }
     setUpdatingActivation(true);
     try {
-      const status = activateStatus ? 'active' : 'inactive';
-      await axios.post(`${apiUrl}/users/toggle-status`, { username: activateUser, status });
-      toast({ title: `User ${status === 'active' ? 'activated' : 'deactivated'}`, status: 'success', duration: 3000, isClosable: true });
+      const userStatus = activateStatus ? 'active' : 'inactive';
+      await axios.patch(`${apiUrl}/user-settings/user/${activateUser}/status`, { userStatus });
+      toast({ title: `User ${userStatus === 'active' ? 'activated' : 'deactivated'}`, status: 'success', duration: 3000, isClosable: true });
       fetchUsers();
     } catch {
       toast({ title: 'Failed to update status', status: 'error', duration: 3000, isClosable: true });
@@ -203,7 +218,7 @@ export default function AdminDashboard() {
     if (!username) { setSelectedSections([]); return; }
     setLoadingSections(true);
     try {
-      const res = await axios.get(`${apiUrl}/sections/user/${username}`);
+      const res = await axios.get(`${apiUrl}/user-settings/user/${username}`);
       setSelectedSections(res.data || []);
     } catch {
       toast({ title: 'Failed to load sections', status: 'error', duration: 3000, isClosable: true });
@@ -218,35 +233,30 @@ export default function AdminDashboard() {
     }
     setSavingSections(true);
     try {
-      await axios.post(`${apiUrl}/sections/update`, { username: selectedEmployee, sections: selectedSections });
+      await axios.post(`${apiUrl}/user-settings/save`, { username: selectedEmployee, sections: selectedSections });
       toast({ title: 'Sections updated successfully', status: 'success', duration: 3000, isClosable: true });
     } catch {
       toast({ title: 'Failed to save sections', status: 'error', duration: 3000, isClosable: true });
     } finally { setSavingSections(false); }
   };
 
-  const handleChangePassword = async () => {
-    if (!passwords.oldPassword || !passwords.newPassword || !passwords.confirmPassword) {
-      toast({ title: 'Please fill all fields', status: 'warning', duration: 3000, isClosable: true }); return;
-    }
-    if (passwords.newPassword !== passwords.confirmPassword) {
-      toast({ title: 'New passwords do not match', status: 'error', duration: 3000, isClosable: true }); return;
-    }
-    if (passwords.newPassword.length < 6) {
-      toast({ title: 'Password must be at least 6 characters', status: 'warning', duration: 3000, isClosable: true }); return;
-    }
-    setChangingPassword(true);
+  const handleChangePassword = async (oldPassword, newPassword) => {
     try {
-      await axios.post(`${apiUrl}/auth/change-password`, { oldPassword: passwords.oldPassword, newPassword: passwords.newPassword });
-      toast({ title: 'Password changed successfully', status: 'success', duration: 3000, isClosable: true });
-      setPasswords({ oldPassword: '', newPassword: '', confirmPassword: '' });
+      await axios.post(`${apiUrl}/user-settings/change-password`, {
+        username: user.username,
+        currentPassword: oldPassword,
+        newPassword,
+      });
+      return { success: true, message: 'Password changed successfully' };
     } catch (err) {
-      toast({ title: 'Failed to change password', description: err?.response?.data?.message || '', status: 'error', duration: 3000, isClosable: true });
-    } finally { setChangingPassword(false); }
+      return { success: false, message: err?.response?.data?.message || 'Failed to change password' };
+    }
   };
 
   const sharedUserProps = {
-    users, departments, newUser, setNewUser, addingUser, onAddUser: handleAddUser,
+    users, departments, newUser, setNewUser,
+    addingUser, onAddUser: handleAddUser,
+    deletingUser, onDeleteUser: handleDeleteUser,
     activateUser, activateStatus, setActivateStatus, updatingActivation,
     onActivationSelect: handleActivationSelect, onUpdateActivation: handleUpdateActivation,
   };
@@ -255,16 +265,16 @@ export default function AdminDashboard() {
     reports: () => (
       <AttendanceReport
         reportFilters={reportFilters} setReportFilters={setReportFilters}
-        reportData={reportData} reportLoading={reportLoading}
-        departments={departments} onGenerateReport={handleGenerateReport} toast={toast}
+        reportData={reportData} reportMetaType={reportMetaType}
+        reportLoading={reportLoading} departments={departments}
+        onGenerateReport={handleGenerateReport} toast={toast}
       />
     ),
-    users:     () => <UserSettings {...sharedUserProps} />,
+    users:      () => <UserSettings {...sharedUserProps} />,
     'new-user': () => <UserSettings {...sharedUserProps} />,
     sections: () => (
       <SectionAccess
         users={users} departments={departments}
-        newUser={newUser} setNewUser={setNewUser}
         selectedEmployee={selectedEmployee}
         selectedSections={selectedSections} setSelectedSections={setSelectedSections}
         loadingSections={loadingSections} savingSections={savingSections}
@@ -272,10 +282,7 @@ export default function AdminDashboard() {
       />
     ),
     password: () => (
-      <ChangePassword
-        passwords={passwords} setPasswords={setPasswords}
-        changingPassword={changingPassword} onChangePassword={handleChangePassword}
-      />
+      <ChangePassword onChangePassword={handleChangePassword} />
     ),
   };
 

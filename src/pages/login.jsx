@@ -81,8 +81,7 @@ const Login = () => {
         isClosable: true,
         position: 'top-right',
       });
-      const targetRoute = username.toLowerCase() === 'admin' ? '/admin-dashboard' : '/dashboard';
-      navigate(targetRoute);
+      navigate('/');
     } catch (err) {
       setError(
         err?.response?.data?.message ||

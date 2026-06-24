@@ -1,11 +1,12 @@
+import { useState, useEffect } from 'react';
+import axios from 'axios';
+import { useAuth } from '../../context/AuthContext';
 import {
   Box, Flex, Text, Select, Button, Table, Thead, Tbody,
   Tr, Th, Td, Grid, Checkbox, FormControl, FormLabel,
   Spinner, TableContainer,
 } from '@chakra-ui/react';
 import { ShieldCheck } from 'lucide-react';
-
-const AVAILABLE_SECTIONS = [1, 2, 3, 4, 5, 6, 7, 8];
 
 // ── Design Tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -48,6 +49,7 @@ const inputSx = {
   },
 };
 
+
 const primaryBtn = {
   bg: C.navy,
   color: C.white,
@@ -63,16 +65,27 @@ const primaryBtn = {
 
 const FF = ({ label, children }) => (
   <FormControl>
-    <FormLabel fontSize="11px" fontWeight={700} color={C.blue500} textTransform="uppercase" letterSpacing="0.08em" mb={1}>{label}</FormLabel>
+    <FormLabel fontSize="11px" fontWeight={700} color={C.blue500}
+      textTransform="uppercase" letterSpacing="0.08em" mb={1}>
+      {label}
+    </FormLabel>
     {children}
   </FormControl>
 );
 
 const TH = ({ children }) => (
-  <Th bg={C.blue50} color={C.blue400} fontSize="10px" textTransform="uppercase" letterSpacing="0.08em" fontWeight={700} py={3} borderBottom={`1px solid ${C.blue200}`} whiteSpace="nowrap">{children}</Th>
+  <Th bg={C.blue50} color={C.blue400} fontSize="10px" textTransform="uppercase"
+    letterSpacing="0.08em" fontWeight={700} py={3}
+    borderBottom={`1px solid ${C.blue200}`} whiteSpace="nowrap">
+    {children}
+  </Th>
 );
+
 const TD = ({ children, ...p }) => (
-  <Td py={3} px={4} fontSize="13px" color={C.navy} borderBottom={`1px solid ${C.blue50}`} {...p}>{children}</Td>
+  <Td py={3} px={4} fontSize="13px" color={C.navy}
+    borderBottom={`1px solid ${C.blue50}`} {...p}>
+    {children}
+  </Td>
 );
 
 const SectionLabel = ({ icon: Icon, title }) => (
@@ -85,8 +98,6 @@ const SectionLabel = ({ icon: Icon, title }) => (
 export default function SectionAccess({
   users,
   departments,
-  newUser,
-  setNewUser,
   selectedEmployee,
   selectedSections,
   setSelectedSections,
@@ -95,66 +106,172 @@ export default function SectionAccess({
   onEmployeeSelect,
   onSaveSections,
 }) {
+  const { apiUrl } = useAuth();
+  const [availableSections, setAvailableSections] = useState([]);
+  const [loadingAvailable, setLoadingAvailable] = useState(false);
+  const [deptId,   setDeptId]   = useState('');
+  const [deptName, setDeptName] = useState('');
+
+  // Auto-detect department when employee changes
+  useEffect(() => {
+    if (!selectedEmployee) {
+      setDeptId(''); setDeptName(''); setAvailableSections([]); return;
+    }
+    const user = users.find(u => u.username === selectedEmployee);
+    if (!user?.deptId) {
+      setDeptId(''); setDeptName(''); setAvailableSections([]); return;
+    }
+    const dept = departments.find(d => Number(d.deptId) === Number(user.deptId));
+    setDeptId(user.deptId);
+    setDeptName(dept?.deptName ?? 'Unknown Department');
+  }, [selectedEmployee, users, departments]);
+
+  // Fetch sections when department is resolved
+  useEffect(() => {
+    if (!deptId) { setAvailableSections([]); return; }
+    setLoadingAvailable(true);
+    axios.get(`${apiUrl}/user-settings/sections?deptId=${deptId}`)
+      .then(res => setAvailableSections(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setAvailableSections([]))
+      .finally(() => setLoadingAvailable(false));
+  }, [deptId, apiUrl]);
+
+  const toggleSection = (sectionId) => {
+    setSelectedSections(prev =>
+      prev.includes(sectionId)
+        ? prev.filter(s => s !== sectionId)
+        : [...prev, sectionId]
+    );
+  };
+
   return (
     <Box maxW="700px" mx="auto">
       <Box {...card} p={6}>
         <SectionLabel icon={ShieldCheck} title="Section Access Control" />
+
+        {/* Employee selector + auto-displayed department */}
         <Grid templateColumns={{ base: '1fr', sm: '1fr 1fr' }} gap={4} mb={6}>
           <FF label="Select Employee">
-            <Select placeholder="Choose an employee" {...inputSx} value={selectedEmployee} onChange={e => onEmployeeSelect(e.target.value)}>
+            <Select
+              placeholder="Choose an employee"
+              {...inputSx}
+              value={selectedEmployee}
+              onChange={e => onEmployeeSelect(e.target.value)}
+            >
               {users.map(u => (
-                <option key={u.username} value={u.username}>
-                  {u.NAME || u.username}
-                </option>
+                <option key={u.username} value={u.username}>{u.username}</option>
               ))}
             </Select>
           </FF>
+
           <FF label="Department">
-            <Select placeholder="Select department" {...inputSx} value={newUser.deptid} onChange={e => setNewUser(p => ({ ...p, deptid: e.target.value }))}>
-              {departments.map(d => <option key={d.DEPTID} value={d.DEPTID}>{d.DEPTNAME}</option>)}
-            </Select>
+            <Box
+              {...inputSx}
+              display="flex" alignItems="center" px={3}
+              borderRadius="8px" minH="38px"
+              bg={selectedEmployee && deptName ? C.blue50 : C.blue50}
+              border={`1px solid ${C.blue200}`}
+            >
+              <Text
+                fontSize="sm"
+                color={deptName ? C.navy : C.blue400}
+                fontWeight={deptName ? 500 : 400}
+                noOfLines={1}
+              >
+                {deptName || (selectedEmployee ? 'No department assigned' : 'Auto-filled from employee')}
+              </Text>
+            </Box>
           </FF>
         </Grid>
 
-        <Text fontSize="11px" fontWeight={700} color={C.blue400} textTransform="uppercase" letterSpacing="0.08em" mb={3}>Section Access</Text>
-        <TableContainer mb={4} border={`1px solid ${C.blue200}`} borderRadius="12px" overflow="hidden">
-          <Table variant="simple" size="sm">
-            <Thead bg={C.blue50}>
-              <Tr>
-                <TH>Section</TH>
-                <TH>Select</TH>
-              </Tr>
-            </Thead>
-            <Tbody>
-              {AVAILABLE_SECTIONS.map(section => {
-                const checked = selectedSections.includes(section);
-                return (
-                  <Tr key={section} _hover={{ bg: C.blue50 }} transition="background 0.15s">
-                    <TD>Section {section}</TD>
-                    <TD>
-                      <Checkbox
-                        isChecked={checked}
-                        colorScheme="blue"
-                        borderColor={C.navy}
-                        borderWidth="0px"
-                        onChange={() => setSelectedSections(p => p.includes(section) ? p.filter(s => s !== section) : [...p, section])}
-                      />
-                    </TD>
-                  </Tr>
-                );
-              })}
-            </Tbody>
-          </Table>
-        </TableContainer>
+        <Text fontSize="11px" fontWeight={700} color={C.blue400}
+          textTransform="uppercase" letterSpacing="0.08em" mb={3}>
+          Section Access
+        </Text>
+
+        {/* No department selected */}
+        {!deptId && (
+          <Flex
+            justify="center" align="center" py={8}
+            border={`1px dashed ${C.blue200}`} borderRadius="10px" mb={4}
+          >
+            <Text fontSize="13px" color={C.blue400}>
+              Select an employee above to view their sections.
+            </Text>
+          </Flex>
+        )}
+
+        {/* Loading sections */}
+        {deptId && loadingAvailable && (
+          <Flex justify="center" py={6} mb={4}>
+            <Spinner color={C.blue700} size="lg" />
+          </Flex>
+        )}
+
+        {/* Sections table */}
+        {deptId && !loadingAvailable && availableSections.length > 0 && (
+          <TableContainer mb={4} border={`1px solid ${C.blue200}`} borderRadius="12px" overflow="hidden">
+            <Table variant="simple" size="sm">
+              <Thead bg={C.blue50}>
+                <Tr>
+                  <TH>Section</TH>
+                  <TH>Access</TH>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {availableSections.map(section => {
+                  const checked = selectedSections.includes(section.sectionId);
+                  return (
+                    <Tr key={section.sectionId} _hover={{ bg: C.blue100 }} transition="background 0.15s">
+                      <TD fontWeight={500}>{section.sectionName}</TD>
+                      <TD>
+                        <Checkbox
+                          border={`1px solid ${C.blue600}`}
+                          isChecked={checked}
+                          colorScheme="blue"
+                          onChange={() => toggleSection(section.sectionId)}
+                        />
+                      </TD>
+                    </Tr>
+                  );
+                })}
+              </Tbody>
+            </Table>
+          </TableContainer>
+        )}
+
+        {/* Department has no sub-sections */}
+        {deptId && !loadingAvailable && availableSections.length === 0 && (
+          <Flex
+            justify="center" align="center" py={8}
+            border={`1px dashed ${C.blue200}`} borderRadius="10px" mb={4}
+          >
+            <Text fontSize="13px" color={C.blue400}>
+              No sections found for this department.
+            </Text>
+          </Flex>
+        )}
 
         {loadingSections && selectedEmployee && (
-          <Flex justify="center" py={4}><Spinner color={C.blue700} size="lg" /></Flex>
-        )}
-        {!selectedEmployee && (
-          <Text fontSize="12px" color={C.blue400} mb={4}>Select an employee above to load and update their section access.</Text>
+          <Flex justify="center" py={4}>
+            <Spinner color={C.blue700} size="lg" />
+          </Flex>
         )}
 
-        <Button w="full" {...primaryBtn} leftIcon={<ShieldCheck size={14} />} onClick={onSaveSections} isLoading={savingSections} loadingText="Saving…">
+        {!selectedEmployee && (
+          <Text fontSize="12px" color={C.blue400} mb={4}>
+            Select an employee above to load and update their section access.
+          </Text>
+        )}
+
+        <Button
+          w="full" {...primaryBtn}
+          leftIcon={<ShieldCheck size={14} />}
+          onClick={onSaveSections}
+          isLoading={savingSections}
+          loadingText="Saving…"
+          isDisabled={!selectedEmployee}
+        >
           Save Access
         </Button>
       </Box>
