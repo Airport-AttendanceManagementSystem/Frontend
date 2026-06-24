@@ -55,7 +55,7 @@ const Navbar = () => {
             letterSpacing="-0.02em"
             bgGradient="linear(to-r, blue.300, cyan.300)"
             bgClip="text"
-            lineHeight="1"
+            lineHeight="1.8"
           >
             Attendance Management System
           </Text>
