@@ -101,7 +101,7 @@ export default function UserDashboard() {
       Object.entries(reportFilters).forEach(([k, v]) => { if (v) params.append(k, v); });
       const res = await axios.get(`${apiUrl}/attendance-report?${params.toString()}`);
       setReportData(res.data.records || []);
-      setReportMetaType(res.data.reportType || 'daily');
+      setReportMetaType(res.data.reportType || 'Daily');
       if (!(res.data.records || []).length)
         toast({ title: 'No records found', status: 'info', duration: 3000, isClosable: true });
     } catch {

@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import {
   Box, Flex, Text, Input, Select, Button, Table, Thead, Tbody,
   Tr, Th, Td, Badge, InputGroup, InputRightElement,
-  TableContainer, FormControl, FormLabel,Menu, MenuButton, MenuList, MenuItem,
+  TableContainer, FormControl, FormLabel,Menu, MenuButton, MenuList, MenuItem, SimpleGrid,
 } from '@chakra-ui/react';
 import {
   FileSpreadsheet, Download, RefreshCw, FileText, Calendar, Clock, Printer, Search,ZoomIn,
@@ -91,7 +91,7 @@ const TypeBadge = ({ type }) => {
       color={isIn ? C.green.text : C.amber.text}
       px={2.5} py={0.5} borderRadius="full" fontSize="11px" fontWeight={600}
     >
-      {isIn ? 'Check-In' : 'Check-Out'}
+      {isIn ? 'I' : 'O'}
     </Badge>
   );
 };
@@ -136,77 +136,6 @@ const EmptyState = () => (
 const getDeptName = (departments, deptId) =>
   (deptId && departments.find(d => String(d.deptId) === String(deptId))?.deptName) || 'All';
 
-const escapePdfString = (text) => String(text)
-  .replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
-  .replace(/\r/g, '\\r').replace(/\n/g, '\\n');
-
-const createPdfBlob = ({ title, detailRows, headers, rows }) => {
-  const pageWidth = 612, pageHeight = 792, margin = 40;
-  const titleFontSize = 18, detailFontSize = 10, rowFontSize = 10;
-  const rowHeight = 24, headerHeight = 28, detailSpacing = 18;
-  const tableWidth = pageWidth - margin * 2;
-  const colWidths = [70, 190, 90, 90, 92];
-  const colPositions = [margin];
-  for (let i = 0; i < colWidths.length; i++) colPositions.push(colPositions[i] + colWidths[i]);
-
-  const titleY = pageHeight - margin;
-  const detailStartY = titleY - titleFontSize - 14;
-  const tableTop = detailStartY - detailRows.length * detailSpacing - 16;
-  const tableBottom = tableTop - headerHeight - rowHeight * rows.length;
-  const tableLines = [], textLines = [];
-
-  textLines.push(`/F1 ${titleFontSize} Tf`);
-  textLines.push(`1 0 0 1 ${margin} ${titleY} Tm (${escapePdfString(title)}) Tj`);
-  textLines.push(`/F1 ${detailFontSize} Tf`);
-  detailRows.forEach((row, i) => {
-    const y = detailStartY - i * detailSpacing;
-    textLines.push(`1 0 0 1 ${margin} ${y} Tm (${escapePdfString(row[0] + ':')}) Tj`);
-    textLines.push(`1 0 0 1 ${margin + 130} ${y} Tm (${escapePdfString(row[1])}) Tj`);
-  });
-  textLines.push(`/F1 10 Tf`);
-  const hy = tableTop - headerHeight / 2 - 6;
-  headers.forEach((h, i) => textLines.push(`1 0 0 1 ${colPositions[i] + 6} ${hy} Tm (${escapePdfString(h)}) Tj`));
-  textLines.push(`/F1 ${rowFontSize} Tf`);
-  rows.forEach((row, ri) => {
-    const y = tableTop - headerHeight - rowHeight * ri - 10;
-    row.forEach((cell, ci) => textLines.push(`1 0 0 1 ${colPositions[ci] + 6} ${y} Tm (${escapePdfString(cell)}) Tj`));
-  });
-  textLines.push(`/F1 9 Tf`);
-  textLines.push(`1 0 0 1 ${margin} 30 Tm (${escapePdfString('Generated on: ' + new Date().toLocaleString())}) Tj`);
-
-  tableLines.push('0.4 w');
-  tableLines.push(`${margin} ${titleY - 8} m ${margin + tableWidth} ${titleY - 8} l S`);
-  tableLines.push('0.5 w');
-  tableLines.push(`${margin} ${tableTop} m ${margin + tableWidth} ${tableTop} l S`);
-  tableLines.push(`${margin} ${tableTop - headerHeight} m ${margin + tableWidth} ${tableTop - headerHeight} l S`);
-  for (let i = 1; i <= rows.length; i++) {
-    const y = tableTop - headerHeight - rowHeight * i;
-    tableLines.push(`${margin} ${y} m ${margin + tableWidth} ${y} l S`);
-  }
-  for (let i = 0; i < colPositions.length; i++) {
-    tableLines.push(`${colPositions[i]} ${tableTop} m ${colPositions[i]} ${tableBottom} l S`);
-  }
-  tableLines.push(`${margin + tableWidth} ${tableTop} m ${margin + tableWidth} ${tableBottom} l S`);
-
-  const contentStream = `BT\n${textLines.join('\n')}\nET\n${tableLines.join('\n')}`;
-  const objects = [
-    `1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n`,
-    `2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n`,
-    `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n`,
-    `4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n`,
-    `5 0 obj\n<< /Length ${new TextEncoder().encode(contentStream).length} >>\nstream\n${contentStream}\nendstream\nendobj\n`,
-  ];
-  const enc = new TextEncoder();
-  const hdr = '%PDF-1.3\n';
-  const offsets = [];
-  let off = enc.encode(hdr).length;
-  for (const obj of objects) { offsets.push(off); off += enc.encode(obj).length; }
-  const xrefEntries = offsets.map(o => `${String(o).padStart(10, '0')} 00000 n \n`).join('');
-  const xref = `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${xrefEntries}`;
-  const trailer = `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${off}\n%%EOF`;
-  return new Blob([hdr + objects.join('') + xref + '\n' + trailer], { type: 'application/pdf' });
-};
-
 // ── Main Component ─────────────────────────────────────────────────────────────
 export default function AttendanceReport({
   reportFilters,
@@ -224,6 +153,7 @@ export default function AttendanceReport({
   const [searchQuery, setSearchQuery] = useState('');
   const [sections, setSections] = useState([]);
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [exportLoading, setExportLoading] = useState('');
 
   // Fetch sub-departments (sections) for the selected department
   useEffect(() => {
@@ -250,40 +180,16 @@ export default function AttendanceReport({
     return reportData.filter(r => {
       const epf  = String(r.badgeNumber ?? r.userId ?? '').toLowerCase();
       const name = String(r.name ?? '').toLowerCase();
+      const location = String(r.location ?? '').toLowerCase();
       const extra = r.checkTime
         ? new Date(r.checkTime).toLocaleDateString().toLowerCase()
         : String(r.month ?? '').toLowerCase();
-      return epf.includes(q) || name.includes(q) || extra.includes(q);
+      return epf.includes(q) || name.includes(q) || location.includes(q) || extra.includes(q);
     });
   }, [reportData, searchQuery]);
 
-  // Row builder — adapts per report type
-  const buildRows = (data) => {
-    if (reportMetaType === 'absence') {
-      return data.map((r, i) => [String(i + 1), String(r.badgeNumber ?? ''), String(r.name ?? '')]);
-    }
-    if (reportMetaType === 'monthly') {
-      return data.map((r, i) => [
-        String(i + 1),
-        String(r.badgeNumber ?? ''),
-        String(r.name ?? ''),
-        String(r.month ?? ''),
-        String(r.daysPresent ?? ''),
-      ]);
-    }
-    return data.map(r => {
-      const d = new Date(r.checkTime);
-      return [
-        String(r.badgeNumber ?? r.userId ?? ''),
-        String(r.name ?? ''),
-        d.toLocaleDateString(),
-        d.toLocaleTimeString(),
-        r.checkTypeDisplay ?? (r.checkType === 'I' ? 'IN' : 'OUT'),
-      ];
-    });
-  };
 
-  const download = (blob, filename) => {
+    const download = (blob, filename) => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.setAttribute('download', filename);
@@ -291,60 +197,97 @@ export default function AttendanceReport({
     document.body.removeChild(a); URL.revokeObjectURL(url);
   };
 
-  const exportHeaders = () => {
-    if (reportMetaType === 'absence') return ['#', 'EPF No', 'Name'];
-    if (reportMetaType === 'monthly') return ['#', 'EPF No', 'Name', 'Month', 'Days Present'];
-    return ['EPF No', 'Name', 'Date', 'Time', 'Type'];
+  const buildExportParams = () => {
+    const params = new URLSearchParams();
+    Object.entries(reportFilters).forEach(([k, v]) => { if (v) params.append(k, v); });
+    const deptName = getDeptName(departments, reportFilters.deptId);
+    if (deptName && deptName !== 'All') params.append('deptName', deptName);
+    const section = sections.find(s => String(s.sectionId) === String(reportFilters.section));
+    if (section?.sectionName) params.append('sectionName', section.sectionName);
+    return params.toString();
   };
 
-  const handleDownloadCSV = () => {
-    if (!filteredData.length) { toast({ title: 'No data to download', status: 'warning', duration: 3000, isClosable: true }); return; }
-    const deptName = getDeptName(departments, reportFilters.deptId);
-    const heading = [
-      `Department: ${deptName}`,
-      `From: ${reportFilters.fromDate} ${reportFilters.fromTime}`,
-      `To: ${reportFilters.toDate} ${reportFilters.toTime}`,
-      '',
-    ];
-    const headers = exportHeaders();
-    const rows = buildRows(filteredData);
-    const csv = [...heading, headers, ...rows]
-      .map(row => Array.isArray(row)
-        ? row.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')
-        : `"${String(row)}"`)
-      .join('\n');
-    download(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), `attendance_${new Date().toISOString().slice(0, 10)}.csv`);
+  const downloadFromBackend = async (endpoint, filename, type) => {
+    if (!filteredData.length) {
+      toast({ title: 'No data to download', status: 'warning', duration: 3000, isClosable: true });
+      return;
+    }
+    setExportLoading(type);
+    try {
+      const res = await axios.get(`${apiUrl}/attendance-report/${endpoint}?${buildExportParams()}`, {
+        responseType: 'blob',
+      });
+      download(new Blob([res.data], { type: res.headers['content-type'] }), filename);
+    } catch {
+      toast({ title: 'Export failed. Please try again.', status: 'error', duration: 3000, isClosable: true });
+    } finally {
+      setExportLoading('');
+    }
   };
 
-  const handleDownloadWord = () => {
-    if (!filteredData.length) { toast({ title: 'No data to download', status: 'warning', duration: 3000, isClosable: true }); return; }
-    const deptName = getDeptName(departments, reportFilters.deptId);
-    const headers = exportHeaders();
-    const rows = buildRows(filteredData);
-    let html = `<h2>Attendance Report</h2>
-      <p><strong>Department:</strong> ${deptName}</p>
-      <p><strong>From:</strong> ${reportFilters.fromDate} ${reportFilters.fromTime}</p>
-      <p><strong>To:</strong> ${reportFilters.toDate} ${reportFilters.toTime}</p>
-      <table border="1" cellpadding="8">
-        <tr>${headers.map(h => `<th style="background:#0052CC;color:#fff">${h}</th>`).join('')}</tr>
-        ${rows.map(row => `<tr>${row.map(v => `<td>${v}</td>`).join('')}</tr>`).join('')}
-      </table>`;
-    download(new Blob([html], { type: 'application/msword;charset=utf-8;' }), `attendance_${new Date().toISOString().slice(0, 10)}.doc`);
-  };
+  const handleDownloadCSV = () =>
+    downloadFromBackend('export/csv', `attendance_${new Date().toISOString().slice(0, 10)}.csv`, 'csv');
+
+  const handleDownloadWord = () =>
+    downloadFromBackend('export/word', `attendance_${new Date().toISOString().slice(0, 10)}.docx`, 'word');
 
   const handleDownloadPDF = () => {
-    if (!filteredData.length) { toast({ title: 'No data to download', status: 'warning', duration: 3000, isClosable: true }); return; }
-    const deptName = getDeptName(departments, reportFilters.deptId);
-    const headers = exportHeaders();
-    const rows = buildRows(filteredData);
-    const detailRows = [
-      ['Department', deptName],
-      ['From', `${reportFilters.fromDate} ${reportFilters.fromTime}`],
-      ['To', `${reportFilters.toDate} ${reportFilters.toTime}`],
-      ['Total Records', String(rows.length)],
-    ];
-    download(createPdfBlob({ title: 'Attendance Report', detailRows, headers, rows }), `attendance_${new Date().toISOString().slice(0, 10)}.pdf`);
+    const isSerial = String(reportFilters.reportType).toLowerCase().includes('serial');
+    const endpoint = isSerial ? 'export/serial-epf-pdf' : 'export/pdf';
+    downloadFromBackend(endpoint, `attendance_${new Date().toISOString().slice(0, 10)}.pdf`, 'pdf');
   };
+
+  // Row builder — adapts per report type
+  const buildRows = (data) => {
+    // if (reportMetaType === 'absence') {
+    //   return data.map((r, i) => [String(i + 1), String(r.badgeNumber ?? ''), String(r.name ?? '')]);
+    // }
+    if (reportMetaType === 'monthly') {
+      // return data.map((r, i) => [
+        // String(i + 1),
+        // String(r.badgeNumber ?? ''),
+        // String(r.name ?? ''),
+        // String(r.month ?? ''),
+        // String(r.daysPresent ?? ''),
+      // ]);
+    }
+    // return data.map(r => {
+    //   const d = new Date(r.checkTime);
+    //   return [
+    //     String(r.badgeNumber ?? r.userId ?? ''),
+    //     String(r.name ?? ''),
+    //     d.toLocaleDateString(),
+    //     d.toLocaleTimeString(),
+    //     r.checkTypeDisplay ?? (r.checkType === 'I' ? 'IN' : 'OUT'),
+    //   ];
+    // });
+  };
+
+  
+
+  // Generate an array of dates between startDate and endDate (For Monthly report)
+
+  const getDateRange = (startDate, endDate) => {
+  const dates = [];
+
+  if (!startDate || !endDate) return dates;
+
+  let current = new Date(startDate);
+  const end = new Date(endDate);
+
+  while (current <= end) {
+    dates.push(current.toISOString().split("T")[0]);
+
+    current.setDate(current.getDate() + 1);
+  }
+
+  return dates;
+};
+
+ const selectedDates = getDateRange(
+    reportFilters.fromDate,
+    reportFilters.toDate
+  );
 
   return (
     <Box>
@@ -362,15 +305,15 @@ export default function AttendanceReport({
         {/* Row 1: REPORT | DEPARTMENT | SECTION | TYPE | EPF */}
         <Flex gap={4} mb={5} flexWrap={{ base: 'wrap', lg: 'nowrap' }}>
 
-          {/* REPORT — report type, NOT departments */}
+          {/* REPORT — report type */}
           <FF label="Report">
             <Select {...inputSx}  value={reportFilters.reportType} onChange={set('reportType')}>
               <option value="Daily Attendance">Daily Attendance</option>
-              <option value="Daily Attendance">Daily Attendance II</option>
+              <option value="Daily Attendance II">Daily Attendance II</option>
               <option value="Absence Report">Absence Report</option>
               <option value="Monthly Attendance">Monthly Attendance</option>
-              <option value="Monthly Attendance">Monthly Attendance II</option>
-              <option value="Monthly Attendance">Daily Attendance II</option>
+              <option value="Monthly Attendance II">Monthly Attendance II</option>
+              <option value="Daily Attendance II">Daily Attendance II</option>
               <option value="Serial/EPF">Serial / EPF</option>
             </Select>
           </FF>
@@ -399,7 +342,7 @@ export default function AttendanceReport({
             </Select>
           </FF>
 
-          {/* TYPE — hidden for Monthly Attendance */}
+          {/* TYPE — hidden for monthly Attendance */}
           {reportFilters.reportType !== 'Monthly Attendance' && <FF label="Type">
             <Select {...inputSx} placeholder="IN / OUT" value={reportFilters.checkType} onChange={set('checkType')}>
               <option value="IN">IN</option>
@@ -531,7 +474,7 @@ export default function AttendanceReport({
                   <MenuItem onClick={() => setZoomLevel(1.5)}>150%</MenuItem>
               </MenuList>
           </Menu>
-          {/* Search — filters table by EPF, name, or date */}
+          {/* Search — filters table by EPF, name,  date */}
           <InputGroup maxW="260px" ml={{ base: 0, md: 'auto' }}>
             <Input
               h="34px" fontSize="sm" borderRadius="6px"
@@ -549,30 +492,48 @@ export default function AttendanceReport({
         </Flex>
 
         {/* Results */}
-        {reportData.length === 0 ? (
-          <EmptyState />
-        ) : (
-          <Box transform={`scale(${zoomLevel})`} transformOrigin="top left" width={`${100 / zoomLevel}%`}>
-            {/* Summary bar */}
+       {reportData.length === 0 ? (
+                <EmptyState />
+              ) : (
+                <Box
+  sx={{
+    zoom: zoomLevel,
+    overflowX: 'auto',
+    width: '100%',
+  }}
+>
+                   {/* Summary bar */}
             <Box >
-             <Flex justify="center" mb={4}>
+             <Flex justify="center" mb={2}>
               <img src="/src/assets/AASL.png" alt="Report Banner" width="20%" borderRadius="8px" mb={4}  />
             </Flex> 
-              <Text textAlign="center"fontSize="lg" fontWeight={700} color={C.navy} mb={2}>
+              <Text textAlign="center"fontSize="lg" fontWeight={700} color={C.navy} mb={0.2}>
                 Airport and Aviation Services (Sri Lanka) Limited
               </Text>
-              <Text textAlign="center" fontSize="lg" fontWeight={700} color={C.navy} mb={2}>
+              <Text textAlign="center" fontSize="lg" fontWeight={700} color={C.navy} mb={0.2}>
                 Bandaranaike International Airport
               </Text>
               <Text textAlign="center" fontSize="lg" fontWeight={700} color={C.navy} mb={3}>
                 Katunayake
               </Text>
-                <Text textAlign="center" fontWeight={600} color={C.navy} mb={2}>
-                <Text as="span" fontWeight={400}>{getDeptName(departments, reportFilters.deptId)}</Text>
-              </Text>
+                <Text textAlign="center" fontSize="lg" fontWeight={700} color={C.navy} mb={4}>
+                  <Text as="span" fontSize="lg" fontWeight={500} color={C.navy}>
+                    {
+                      reportMetaType === 'monthly'
+                        ? 'Monthly Attendance Report'
+                        : reportMetaType === 'daily'
+                          ? 'Daily Attendance Report'
+                          : reportMetaType === 'serial'
+                            ? 'Serial / EPF Report'
+                              : reportMetaType === 'absence'
+                            ? 'Absence Report'
+                            : reportMetaType
+                    }
+                  </Text>
+                </Text>
 
 
-            <Flex bg={C.blue50} borderRadius="8px" p={4} mb={4} gap={6} flexWrap="wrap" fontSize="sm">
+            {/* <Flex bg={C.blue50} borderRadius="8px" p={4} mb={4} gap={6} flexWrap="wrap" fontSize="sm">
               <Text fontWeight={600} color={C.navy}>
                 Division: <Text as="span" fontWeight={400}>{getDeptName(departments, reportFilters.deptId)}</Text>
               </Text>
@@ -592,19 +553,85 @@ export default function AttendanceReport({
               <Text fontWeight={600} color={C.navy}>
                 Total: <Text as="span" fontWeight={400}>{filteredData.length} records</Text>
               </Text>
-            </Flex>
+            </Flex> */}
+            <Box bg={C.blue50} borderRadius="8px" p={4} mb={4} fontSize="sm">
+                  <SimpleGrid columns={{ base: 1, md: 3 }} spacingY={3} spacingX={8}>
+
+                    {/* Division */}
+                    <Text fontWeight={600} color={C.navy}>
+                      DIVISION :
+                      <Text as="span" fontWeight={400} ml={2}>
+                        {getDeptName(
+                          departments,
+                          reportFilters.deptId
+                        )}
+                      </Text>
+                    </Text>
+
+
+                    {/* From Date */}
+                    <Text fontWeight={600} color={C.navy}>
+                      FROM :
+                      <Text as="span" fontWeight={400} ml={2}>
+                        {reportFilters.fromDate}  {reportFilters.fromTime}
+                      </Text>
+                    </Text>
+
+
+                    {/* To Date */}
+                    <Text fontWeight={600} color={C.navy}>
+                      TO :
+                      <Text as="span" fontWeight={400} ml={2}>
+                        {reportFilters.toDate}  {reportFilters.toTime}
+                      </Text>
+                    </Text>
+
+
+                    {/* Section */}
+                    <Text fontWeight={600} color={C.navy}>
+                      SECTION :
+                      <Text as="span" fontWeight={400} ml={2}>
+                        {
+                          (
+                            reportFilters.deptId &&
+                            departments.find(
+                              d =>
+                                String(d.DEPTID) ===
+                                String(reportFilters.deptId)
+                            )?.DEPTNAME
+                          ) || "All"
+                        }
+                      </Text>
+                    </Text>
+
+
+                    {/* Total */}
+                    <Text fontWeight={600} color={C.navy}>
+                      Total :
+                      <Text as="span" fontWeight={400} ml={2}>
+                        {filteredData.length}
+                      </Text>
+                    </Text>
+
+                  </SimpleGrid>
             </Box>
+            </Box>
+            <Box
+              transform={`scale(${zoomLevel})`}
+              transformOrigin="top left"
+              width={`${100 / zoomLevel}%`}
+            >
             {/* ── Absence Report table ── */}
-            {reportMetaType === 'absence' && (
+            {/* {reportMetaType === 'absence' && (
               <TableContainer>
                 <Table variant="unstyled" size="sm">
                   <Thead>
-                    <Tr>{['#', 'EPF No', 'Name'].map(h => <TH key={h}>{h}</TH>)}</Tr>
+                    <Tr>{['EPF No', 'Name'].map(h => <TH key={h}>{h}</TH>)}</Tr>
                   </Thead>
                   <Tbody>
                     {filteredData.map((row, i) => (
                       <Tr key={i} _hover={{ bg: C.blue50 }} transition="background 0.1s">
-                        <TD color={C.blue400}>{i + 1}</TD>
+                     
                         <TD color={C.blue500} fontWeight={600}>{row.badgeNumber}</TD>
                         <TD fontWeight={600}>{row.name}</TD>
                       </Tr>
@@ -612,48 +639,77 @@ export default function AttendanceReport({
                   </Tbody>
                 </Table>
               </TableContainer>
-            )}
+            )} */}
 
-            {/* ── Monthly Attendance table ── */}
+            {/* ── monthly Attendance table ── */}
             {reportMetaType === 'monthly' && (
               <TableContainer>
-                <Table variant="unstyled" size="sm">
-                  <Thead>
-                    <Tr>{['#', 'EPF No', 'Name', 'Month', 'Days Present'].map(h => <TH key={h}>{h}</TH>)}</Tr>
-                  </Thead>
-                  <Tbody>
+                <Table variant="unstyled" size="sm" >
+                   <Thead >
+                    <Tr>{['EPF No', 'Name', ...selectedDates].map(h => <TH key={h}>{h}</TH>)}</Tr>
+                  </Thead> 
+                  
+                 <Tbody>
                     {filteredData.map((row, i) => (
-                      <Tr key={i} _hover={{ bg: C.blue50 }} transition="background 0.1s">
-                        <TD color={C.blue400}>{i + 1}</TD>
-                        <TD color={C.blue500} fontWeight={600}>{row.badgeNumber}</TD>
-                        <TD fontWeight={600}>{row.name}</TD>
-                        <TD>{row.month}</TD>
-                        <TD>
-                          <Badge bg={C.blue100} color={C.blue700} px={2.5} py={0.5} borderRadius="full" fontSize="11px" fontWeight={700}>
-                            {row.daysPresent} days
-                          </Badge>
+                      <Tr
+                        key={i}
+                        _hover={{ bg: C.blue50 }}
+                        transition="background 0.1s"
+                      >
+                        {/* EPF No */}
+                        <TD color={C.blue500} fontWeight={600}>
+                          {row.badgeNumber}
                         </TD>
+
+                        {/* Name */}
+                        <TD fontWeight={600}>
+                          {row.name}
+                        </TD>
+
+                        {/* Dynamic Date Columns */}
+                        {selectedDates.map((date) => {
+                          const record = row.attendance?.find(
+                            (a) => a.date === date
+                          );
+
+                          return (
+                            <TD key={date} textAlign="center">
+                              {record ? (
+                                <Box fontSize="xs">
+                                  <Text>{record.in || "-"}</Text>
+                                  <Text color="gray.500">|</Text>
+                                  <Text>{record.out || "-"}</Text>
+                                </Box>
+                              ) : (
+                                "-"
+                              )}
+                            </TD>
+                          );
+                        })}
                       </Tr>
                     ))}
-                  </Tbody>
+                </Tbody>
                 </Table>
               </TableContainer>
             )}
 
-            {/* ── Daily / Serial-EPF table ── */}
-            {(reportMetaType === 'daily' || reportMetaType === 'serial') && (
+            {/* ── Daily ── */}
+            {(reportMetaType === 'daily') && (
               <TableContainer>
-                <Table variant="unstyled" size="sm">
+                <Table variant="unstyled" size="sm" >
                   <Thead>
-                    <Tr>{['EPF No', 'Name', 'Date', 'Time', 'Type'].map(h => <TH key={h}>{h}</TH>)}</Tr>
+                    <Tr>
+                      {['EPF No', 'Name', 'Location', 'Date', 'Time', 'Type'].map(h => <TH key={h}>{h}</TH>)}
+                  </Tr>
                   </Thead>
                   <Tbody>
                     {filteredData.map((row, i) => {
                       const t = new Date(row.checkTime);
                       return (
-                        <Tr key={i} _hover={{ bg: C.blue50 }} transition="background 0.1s">
+                        <Tr key={i} _hover={{ bg: C.blue100 }} transition="background 0.1s">
                           <TD color={C.blue500} fontWeight={600}>{row.badgeNumber ?? row.userId}</TD>
                           <TD fontWeight={600}>{row.name}</TD>
+                          <TD fontWeight={600}>{row.location ?? '-'}</TD>
                           <TD>{t.toLocaleDateString()}</TD>
                           <TD>{t.toLocaleTimeString()}</TD>
                           <TD><TypeBadge type={row.checkType} /></TD>
@@ -664,7 +720,73 @@ export default function AttendanceReport({
                 </Table>
               </TableContainer>
             )}
+
+            {/* Serial-EPF table ── */}
+            {/* {(reportMetaType === 'serial') && (
+              <TableContainer>
+                <Table variant="unstyled" size="sm">
+                  <Thead>
+                    <Tr>{['Serial No', 'EPF No', 'Name'].map(h => <TH key={h}>{h}</TH>)}</Tr>
+                  </Thead>
+                  <Tbody>
+                    {filteredData.map((row, i) => {
+                      const t = new Date(row.checkTime);
+                      return (
+                        <Tr key={i} _hover={{ bg: C.blue50 }} transition="background 0.1s">
+                          <TD color={C.blue500} fontWeight={600}>{row.serialNumber}</TD>
+                          <TD color={C.blue500} fontWeight={600}>{row.badgeNumber ?? row.userId}</TD>
+                          <TD fontWeight={600}>{row.name}</TD>
+                        </Tr>
+                      );
+                    })}
+                  </Tbody>
+                </Table>
+              </TableContainer>
+            )} */}
+            {/* Serial-EPF table */}
+{reportMetaType === 'serial' && (
+  <TableContainer>
+    <Table variant="unstyled" size="sm">
+      <Thead>
+        <Tr>
+          {['Serial No', 'EPF No', 'Name'].map(h => (
+            <TH key={h}>{h}</TH>
+          ))}
+        </Tr>
+      </Thead>
+
+      <Tbody>
+        {filteredData.map((row, i) => (
+          <Tr 
+            key={i}
+            _hover={{ bg: C.blue50 }}
+            transition="background 0.1s"
+          >
+
+            {/* Serial Number */}
+            <TD color={C.blue500} fontWeight={600}>
+              {i + 1}
+            </TD>
+
+            {/* EPF Number */}
+            <TD color={C.blue500} fontWeight={600}>
+              {row.badgeNumber || row.epfNo || row.userId || '-'}
+            </TD>
+
+            {/* Name */}
+            <TD fontWeight={600}>
+              {row.name || '-'}
+            </TD>
+
+          </Tr>
+        ))}
+      </Tbody>
+
+    </Table>
+  </TableContainer>
+)}
           </Box>
+          </Box>  
         )}
       </Box>
     </Box>
