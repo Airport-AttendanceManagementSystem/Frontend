@@ -95,6 +95,14 @@ export default function UserDashboard() {
   useEffect(() => { fetchDepartments(); }, [fetchDepartments]);
 
   const handleGenerateReport = async () => {
+    // Absence Report has no backend logic yet — show empty state instead of
+    // silently falling through to another report's data.
+    if (reportFilters.reportType === 'Absence Report') {
+      setReportData([]);
+      setReportMetaType('absence');
+      toast({ title: 'Absence Report is not available yet', status: 'info', duration: 3000, isClosable: true });
+      return;
+    }
     setReportLoading(true);
     try {
       const params = new URLSearchParams();

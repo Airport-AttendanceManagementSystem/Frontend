@@ -237,33 +237,6 @@ export default function AttendanceReport({
     downloadFromBackend(endpoint, `attendance_${new Date().toISOString().slice(0, 10)}.pdf`, 'pdf');
   };
 
-  // Row builder — adapts per report type
-  const buildRows = (data) => {
-    // if (reportMetaType === 'absence') {
-    //   return data.map((r, i) => [String(i + 1), String(r.badgeNumber ?? ''), String(r.name ?? '')]);
-    // }
-    if (reportMetaType === 'monthly') {
-      // return data.map((r, i) => [
-        // String(i + 1),
-        // String(r.badgeNumber ?? ''),
-        // String(r.name ?? ''),
-        // String(r.month ?? ''),
-        // String(r.daysPresent ?? ''),
-      // ]);
-    }
-    // return data.map(r => {
-    //   const d = new Date(r.checkTime);
-    //   return [
-    //     String(r.badgeNumber ?? r.userId ?? ''),
-    //     String(r.name ?? ''),
-    //     d.toLocaleDateString(),
-    //     d.toLocaleTimeString(),
-    //     r.checkTypeDisplay ?? (r.checkType === 'I' ? 'IN' : 'OUT'),
-    //   ];
-    // });
-  };
-
-  
 
   // Generate an array of dates between startDate and endDate (For Monthly report)
 
@@ -525,8 +498,6 @@ export default function AttendanceReport({
                           ? 'Daily Attendance Report'
                           : reportMetaType === 'serial'
                             ? 'Serial / EPF Report'
-                              : reportMetaType === 'absence'
-                            ? 'Absence Report'
                             : reportMetaType
                     }
                   </Text>
@@ -621,26 +592,6 @@ export default function AttendanceReport({
               transformOrigin="top left"
               width={`${100 / zoomLevel}%`}
             >
-            {/* ── Absence Report table ── */}
-            {/* {reportMetaType === 'absence' && (
-              <TableContainer>
-                <Table variant="unstyled" size="sm">
-                  <Thead>
-                    <Tr>{['EPF No', 'Name'].map(h => <TH key={h}>{h}</TH>)}</Tr>
-                  </Thead>
-                  <Tbody>
-                    {filteredData.map((row, i) => (
-                      <Tr key={i} _hover={{ bg: C.blue50 }} transition="background 0.1s">
-                     
-                        <TD color={C.blue500} fontWeight={600}>{row.badgeNumber}</TD>
-                        <TD fontWeight={600}>{row.name}</TD>
-                      </Tr>
-                    ))}
-                  </Tbody>
-                </Table>
-              </TableContainer>
-            )} */}
-
             {/* ── monthly Attendance table ── */}
             {reportMetaType === 'monthly' && (
               <TableContainer>
@@ -674,11 +625,18 @@ export default function AttendanceReport({
 
                           return (
                             <TD key={date} textAlign="center">
-                              {record ? (
-                                <Box fontSize="xs">
-                                  <Text>{record.in || "-"}</Text>
-                                  <Text color="gray.500">|</Text>
-                                  <Text>{record.out || "-"}</Text>
+                              {record && (record.in || record.out) ? (
+                                <Box fontSize="xs" lineHeight={1.5}>
+                                  {record.in && (
+                                    <Text color={C.green.text} fontWeight={600}>
+                                      {record.in} I
+                                    </Text>
+                                  )}
+                                  {record.out && (
+                                    <Text color={C.amber.text} fontWeight={600}>
+                                      {record.out} O
+                                    </Text>
+                                  )}
                                 </Box>
                               ) : (
                                 "-"
